@@ -81,7 +81,9 @@ const ICON_PATHS = {
   arrowUp: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
   arrowDown: '<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>',
   dumbbell: '<line x1="7" y1="12" x2="17" y2="12"/><rect x="2" y="8" width="4" height="8" rx="1"/><rect x="18" y="8" width="4" height="8" rx="1"/>',
-  trendingUp: '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>'
+  trendingUp: '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>',
+  flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 17a2.5 2.5 0 0 0 2.5-2.5c0-1.5-1.5-2-1.5-3.5 0-1 .5-2 1-2.5.7 1 2 2.5 2 5 0 2.5-2 4.5-4.5 4.5S6 18.5 6 16c0-3 2-4 2.5-7.5.3 1 1 2 1 3.5 0 1-1 1.5-1 2.5z"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>'
 };
 function Icon({
   name,
@@ -250,8 +252,64 @@ function historyForExercise(logs, routineId, exerciseName) {
 }
 
 // ---------------------------------------------------------------------------
-// Small UI atoms
+// Nutrition: quick-add foods with approximate protein content (grams)
 // ---------------------------------------------------------------------------
+const PROTEIN_GOAL = 120;
+const FOODS = [{
+  name: "2 huevos",
+  protein: 12
+}, {
+  name: "Pechuga de pollo (150g)",
+  protein: 35
+}, {
+  name: "Milanesa de pollo",
+  protein: 30
+}, {
+  name: "Carne vacuna (150g)",
+  protein: 35
+}, {
+  name: "Hamburguesa de carne",
+  protein: 30
+}, {
+  name: "Salmón (200g)",
+  protein: 40
+}, {
+  name: "Lata de atún",
+  protein: 26
+}, {
+  name: "Yogur griego",
+  protein: 10
+}, {
+  name: "Vaso de leche",
+  protein: 7
+}, {
+  name: "Scoop de proteína (whey)",
+  protein: 24
+}, {
+  name: "Queso fresco/cottage (100g)",
+  protein: 14
+}, {
+  name: "2 fetas de jamón cocido",
+  protein: 8
+}, {
+  name: "Lentejas (1 taza cocida)",
+  protein: 18
+}, {
+  name: "Garbanzos (1 taza cocida)",
+  protein: 15
+}, {
+  name: "Tofu (100g)",
+  protein: 15
+}, {
+  name: "Barrita proteica",
+  protein: 20
+}, {
+  name: "Puñado de almendras",
+  protein: 6
+}, {
+  name: "Manteca de maní (2 cdas)",
+  protein: 8
+}];
 function NumField({
   label,
   value,
@@ -1276,6 +1334,210 @@ function ProgressFlow({
 }
 
 // ---------------------------------------------------------------------------
+// Nutrition / protein tracker
+// ---------------------------------------------------------------------------
+function NutritionScreen({
+  entries,
+  onAdd,
+  onRemove
+}) {
+  const [adding, setAdding] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [customProtein, setCustomProtein] = useState(10);
+  const today = todayISO();
+  const todayEntries = entries.filter(e => e.date === today).sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0));
+  const total = todayEntries.reduce((sum, e) => sum + (Number(e.protein) || 0), 0);
+  const pct = Math.min(100, Math.round(total / PROTEIN_GOAL * 100));
+  const reached = total >= PROTEIN_GOAL;
+  function addCustom() {
+    const n = customName.trim();
+    if (!n || !customProtein) return;
+    onAdd(n, Number(customProtein));
+    setCustomName("");
+    setCustomProtein(10);
+    setAdding(false);
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    className: "px-4 pt-6 pb-10"
+  }, /*#__PURE__*/React.createElement("h1", {
+    className: "text-3xl font-bold tracking-tight mb-1",
+    style: {
+      color: C.text
+    }
+  }, "Proteína"), /*#__PURE__*/React.createElement("p", {
+    className: "text-sm mb-5",
+    style: {
+      color: C.textDim
+    }
+  }, "Meta diaria: ", PROTEIN_GOAL, " g"), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-2xl p-4 mb-5",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-baseline gap-1.5"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-3xl font-bold tracking-tight",
+    style: {
+      color: C.text,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, total), /*#__PURE__*/React.createElement("span", {
+    className: "text-sm",
+    style: {
+      color: C.textDim
+    }
+  }, "/ ", PROTEIN_GOAL, " g")), reached && /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold",
+    style: {
+      background: "rgba(48,209,88,0.15)",
+      color: C.green
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "check",
+    size: 12
+  }), " Meta cumplida")), /*#__PURE__*/React.createElement("div", {
+    className: "w-full h-2.5 rounded-full overflow-hidden",
+    style: {
+      background: C.surface2
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "h-full rounded-full",
+    style: {
+      width: `${pct}%`,
+      background: reached ? C.green : C.orange,
+      transition: "width .3s ease"
+    }
+  })), !reached && /*#__PURE__*/React.createElement("p", {
+    className: "text-xs mt-2",
+    style: {
+      color: C.textDim
+    }
+  }, "Te faltan ", PROTEIN_GOAL - total, " g")), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs font-medium mb-2",
+    style: {
+      color: C.textDim
+    }
+  }, "Tocá para agregar"), /*#__PURE__*/React.createElement("div", {
+    className: "grid grid-cols-2 gap-2 mb-5"
+  }, FOODS.map(f => /*#__PURE__*/React.createElement("button", {
+    key: f.name,
+    onClick: () => onAdd(f.name, f.protein),
+    className: "text-left rounded-xl px-3 py-2.5",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-medium",
+    style: {
+      color: C.text
+    }
+  }, f.name), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs mt-0.5",
+    style: {
+      color: C.green,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, f.protein, " g proteína")))), adding ? /*#__PURE__*/React.createElement("div", {
+    className: "rounded-2xl p-3 mb-5 flex items-center gap-2",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    autoFocus: true,
+    value: customName,
+    onChange: e => setCustomName(e.target.value),
+    placeholder: "Nombre del alimento",
+    className: "flex-1 bg-transparent outline-none text-sm",
+    style: {
+      color: C.text
+    }
+  }), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    value: customProtein,
+    onChange: e => setCustomProtein(e.target.value),
+    className: "w-16 rounded-lg px-2 py-1 text-sm outline-none text-center",
+    style: {
+      background: C.surface2,
+      color: C.text,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "text-xs",
+    style: {
+      color: C.textDim
+    }
+  }, "g"), /*#__PURE__*/React.createElement("button", {
+    onClick: addCustom,
+    className: "text-sm font-semibold",
+    style: {
+      color: C.green
+    }
+  }, "Agregar"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setAdding(false)
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "x",
+    size: 16,
+    color: C.textDim
+  }))) : /*#__PURE__*/React.createElement("button", {
+    onClick: () => setAdding(true),
+    className: "mb-5 w-full flex items-center justify-center gap-1.5 rounded-2xl py-3 text-sm font-semibold",
+    style: {
+      border: `1px dashed ${C.border}`,
+      color: C.green
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "plus",
+    size: 16
+  }), " Otro alimento"), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs font-medium mb-2",
+    style: {
+      color: C.textDim
+    }
+  }, "Hoy"), todayEntries.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
+    icon: /*#__PURE__*/React.createElement(Icon, {
+      name: "flame",
+      size: 22,
+      color: C.green
+    }),
+    title: "Todavía no registraste nada hoy"
+  }) : /*#__PURE__*/React.createElement("div", {
+    className: "space-y-2"
+  }, todayEntries.map(e => /*#__PURE__*/React.createElement("div", {
+    key: e.id,
+    className: "flex items-center justify-between rounded-xl px-4 py-2.5",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-sm",
+    style: {
+      color: C.text
+    }
+  }, e.name), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-3"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-sm font-semibold",
+    style: {
+      color: C.green,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, e.protein, " g"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => onRemove(e.id)
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "x",
+    size: 14,
+    color: C.textDim
+  })))))));
+}
+
+// ---------------------------------------------------------------------------
 // Bottom nav
 // ---------------------------------------------------------------------------
 function BottomNav({
@@ -1290,6 +1552,10 @@ function BottomNav({
     k: "progreso",
     l: "Progreso",
     icon: "trendingUp"
+  }, {
+    k: "proteina",
+    l: "Proteína",
+    icon: "flame"
   }];
   return /*#__PURE__*/React.createElement("div", {
     className: "fixed bottom-0 inset-x-0 backdrop-blur-xl",
@@ -1427,6 +1693,7 @@ function LoadingScreen() {
 function MainApp() {
   const [routines, setRoutines] = useState(null);
   const [logs, setLogs] = useState(null);
+  const [nutrition, setNutrition] = useState(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("rutinas");
   const [rutinasView, setRutinasView] = useState(null);
@@ -1435,7 +1702,7 @@ function MainApp() {
   }, []);
   async function loadAll() {
     try {
-      const [rSnap, sSnap] = await Promise.all([db.collection("routines").get(), db.collection("sessions").get()]);
+      const [rSnap, sSnap, nSnap] = await Promise.all([db.collection("routines").get(), db.collection("sessions").get(), db.collection("nutrition").get()]);
       setRoutines(rSnap.docs.map(d => ({
         id: d.id,
         name: d.data().name,
@@ -1448,10 +1715,43 @@ function MainApp() {
         date: d.data().date,
         exercises: d.data().exercises || []
       })));
+      setNutrition(nSnap.docs.map(d => ({
+        id: d.id,
+        date: d.data().date,
+        name: d.data().name,
+        protein: d.data().protein
+      })));
     } catch (e) {
       setError("No se pudieron cargar los datos.");
       setRoutines([]);
       setLogs([]);
+      setNutrition([]);
+    }
+  }
+  async function addFood(name, protein) {
+    try {
+      const ref = await db.collection("nutrition").add({
+        date: todayISO(),
+        name,
+        protein,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+      setNutrition(prev => [...(prev || []), {
+        id: ref.id,
+        date: todayISO(),
+        name,
+        protein
+      }]);
+    } catch (e) {
+      setError("No se pudo agregar el alimento.");
+    }
+  }
+  async function removeFood(id) {
+    setNutrition(prev => prev.filter(n => n.id !== id));
+    try {
+      await db.collection("nutrition").doc(id).delete();
+    } catch (e) {
+      setError("No se pudo borrar el alimento.");
     }
   }
   async function createRoutine(name) {
@@ -1516,16 +1816,17 @@ function MainApp() {
   }
   async function wipeAll() {
     try {
-      const [rSnap, sSnap] = await Promise.all([db.collection("routines").get(), db.collection("sessions").get()]);
-      await Promise.all([...rSnap.docs, ...sSnap.docs].map(d => d.ref.delete()));
+      const [rSnap, sSnap, nSnap] = await Promise.all([db.collection("routines").get(), db.collection("sessions").get(), db.collection("nutrition").get()]);
+      await Promise.all([...rSnap.docs, ...sSnap.docs, ...nSnap.docs].map(d => d.ref.delete()));
       setRoutines([]);
       setLogs([]);
+      setNutrition([]);
       setRutinasView(null);
     } catch (e) {
       setError("No se pudo borrar todo.");
     }
   }
-  const loading = routines === null || logs === null;
+  const loading = routines === null || logs === null || nutrition === null;
   const inSession = tab === "rutinas" && rutinasView?.type === "session";
   return /*#__PURE__*/React.createElement("div", {
     className: "min-h-screen w-full",
@@ -1581,6 +1882,10 @@ function MainApp() {
   }), tab === "progreso" && /*#__PURE__*/React.createElement(ProgressFlow, {
     routines: routines,
     logs: logs
+  }), tab === "proteina" && /*#__PURE__*/React.createElement(NutritionScreen, {
+    entries: nutrition,
+    onAdd: addFood,
+    onRemove: removeFood
   })), !loading && !inSession && /*#__PURE__*/React.createElement(BottomNav, {
     tab: tab,
     setTab: t => {
