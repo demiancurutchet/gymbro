@@ -83,7 +83,9 @@ const ICON_PATHS = {
   dumbbell: '<line x1="7" y1="12" x2="17" y2="12"/><rect x="2" y="8" width="4" height="8" rx="1"/><rect x="18" y="8" width="4" height="8" rx="1"/>',
   trendingUp: '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>',
   flame: '<path d="M8.5 14.5A2.5 2.5 0 0 0 11 17a2.5 2.5 0 0 0 2.5-2.5c0-1.5-1.5-2-1.5-3.5 0-1 .5-2 1-2.5.7 1 2 2.5 2 5 0 2.5-2 4.5-4.5 4.5S6 18.5 6 16c0-3 2-4 2.5-7.5.3 1 1 2 1 3.5 0 1-1 1.5-1 2.5z"/>',
-  check: '<polyline points="20 6 9 17 4 12"/>'
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/>',
+  bars: '<line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/>'
 };
 function Icon({
   name,
@@ -243,7 +245,9 @@ function historyForExercise(logs, routineId, exerciseName) {
         date: l.date,
         weight: top,
         logId: l.id,
-        sets: ex.sets
+        sets: ex.sets,
+        strength: l.strength,
+        endurance: l.endurance
       });
     }
   });
@@ -252,8 +256,176 @@ function historyForExercise(logs, routineId, exerciseName) {
 }
 
 // ---------------------------------------------------------------------------
-// Nutrition: quick-add foods with approximate protein content (grams)
+// Insights: simple, transparent pattern-finding over the user's own data.
+// Every function returns null if there isn't enough data to say anything
+// meaningful — these are patterns in personal data, not scientific claims.
 // ---------------------------------------------------------------------------
+const WEEKDAY_NAMES = ["domingos", "lunes", "martes", "miércoles", "jueves", "viernes", "sábados"];
+const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+const fmt1 = n => (Math.round(n * 10) / 10).toFixed(1);
+function ratedSessions(logs) {
+  return logs.filter(l => typeof l.strength === "number" && typeof l.endurance === "number");
+}
+function weekdayInsights(sessions) {
+  if (sessions.length < 6) return [];
+  const byDay = {};
+  sessions.forEach(s => {
+    const d = new Date(s.date + "T00:00:00").getDay();
+    (byDay[d] = byDay[d] || []).push(s);
+  });
+  const overallS = avg(sessions.map(s => s.strength));
+  const overallE = avg(sessions.map(s => s.endurance));
+  const out = [];
+  Object.entries(byDay).forEach(([day, list]) => {
+    if (list.length < 2) return;
+    const s = avg(list.map(x => x.strength));
+    const e = avg(list.map(x => x.endurance));
+    const diff = s - overallS + (e - overallE);
+    if (Math.abs(diff) < 1.5) return;
+    const better = diff > 0;
+    out.push({
+      title: `Los ${WEEKDAY_NAMES[day]} rendís ${better ? "mejor" : "peor"} que el promedio`,
+      desc: `Fuerza ${fmt1(s)} y resistencia ${fmt1(e)}, contra ${fmt1(overallS)} y ${fmt1(overallE)} en el resto de los días.`,
+      n: list.length,
+      good: better
+    });
+  });
+  return out;
+}
+function restGapInsight(sessions, gapDays = 5) {
+  const sorted = sessions.slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  const drops = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const days = (new Date(sorted[i].date) - new Date(sorted[i - 1].date)) / 86400000;
+    if (days > gapDays) {
+      drops.push({
+        sDelta: sorted[i].strength - sorted[i - 1].strength,
+        eDelta: sorted[i].endurance - sorted[i - 1].endurance
+      });
+    }
+  }
+  if (drops.length < 2) return null;
+  const sDelta = avg(drops.map(d => d.sDelta));
+  const eDelta = avg(drops.map(d => d.eDelta));
+  if (sDelta > -0.8 && eDelta > -0.8) return null;
+  return {
+    title: `Los parates de más de ${gapDays} días te afectan`,
+    desc: `Cuando volvés después de más de ${gapDays} días sin entrenar, tu fuerza cae en promedio ${fmt1(Math.abs(sDelta))} puntos y tu resistencia ${fmt1(Math.abs(eDelta))}, comparado con tu última sesión antes del parate.`,
+    n: drops.length,
+    good: false
+  };
+}
+function trendInsight(sessions) {
+  if (sessions.length < 6) return null;
+  const sorted = sessions.slice().sort((a, b) => a.date < b.date ? -1 : 1);
+  const n = Math.min(4, Math.floor(sorted.length / 2));
+  const first = sorted.slice(0, n),
+    last = sorted.slice(-n);
+  const fS = avg(first.map(s => s.strength)),
+    lS = avg(last.map(s => s.strength));
+  const fE = avg(first.map(s => s.endurance)),
+    lE = avg(last.map(s => s.endurance));
+  const diff = lS - fS + (lE - fE);
+  if (Math.abs(diff) < 1.2) return null;
+  const improving = diff > 0;
+  return {
+    title: improving ? "Venís mejorando con el tiempo" : "Tu rendimiento viene en baja",
+    desc: `Tus primeras sesiones registradas promediaban fuerza ${fmt1(fS)} y resistencia ${fmt1(fE)}. Tus últimas, ${fmt1(lS)} y ${fmt1(lE)}.`,
+    n: sorted.length,
+    good: improving
+  };
+}
+function routineInsight(sessions) {
+  const byRoutine = {};
+  sessions.forEach(s => {
+    if (!byRoutine[s.routineName]) byRoutine[s.routineName] = [];
+    byRoutine[s.routineName].push(s);
+  });
+  const names = Object.keys(byRoutine).filter(n => byRoutine[n].length >= 2);
+  if (names.length < 2) return null;
+  const stats = names.map(n => ({
+    name: n,
+    s: avg(byRoutine[n].map(x => x.strength)),
+    e: avg(byRoutine[n].map(x => x.endurance)),
+    n: byRoutine[n].length
+  }));
+  stats.sort((a, b) => b.s + b.e - (a.s + a.e));
+  const best = stats[0],
+    worst = stats[stats.length - 1];
+  if (best.s + best.e - (worst.s + worst.e) < 1.5) return null;
+  return {
+    title: `"${best.name}" te rinde mejor que "${worst.name}"`,
+    desc: `En "${best.name}" promediás fuerza ${fmt1(best.s)} / resistencia ${fmt1(best.e)}. En "${worst.name}", ${fmt1(worst.s)} / ${fmt1(worst.e)}.`,
+    n: best.n + worst.n,
+    good: true
+  };
+}
+function proteinGoalInsight(sessions, nutrition) {
+  const proteinByDate = {};
+  nutrition.forEach(e => {
+    proteinByDate[e.date] = (proteinByDate[e.date] || 0) + (Number(e.protein) || 0);
+  });
+  const reached = sessions.filter(s => (proteinByDate[s.date] || 0) >= PROTEIN_GOAL);
+  const notReached = sessions.filter(s => (proteinByDate[s.date] || 0) < PROTEIN_GOAL);
+  if (reached.length < 2 || notReached.length < 2) return null;
+  const sR = avg(reached.map(s => s.strength)),
+    eR = avg(reached.map(s => s.endurance));
+  const sN = avg(notReached.map(s => s.strength)),
+    eN = avg(notReached.map(s => s.endurance));
+  const diff = sR + eR - (sN + eN);
+  if (Math.abs(diff) < 1.2) return null;
+  return {
+    title: `Llegar a los ${PROTEIN_GOAL}g de proteína parece importar`,
+    desc: `Los días que llegaste a la meta: fuerza ${fmt1(sR)} / resistencia ${fmt1(eR)}. Los días que no: ${fmt1(sN)} / ${fmt1(eN)}.`,
+    n: reached.length,
+    good: diff > 0
+  };
+}
+function foodInsights(sessions, nutrition) {
+  const allNames = [...new Set(nutrition.map(e => e.name))];
+  const results = [];
+  allNames.forEach(name => {
+    const datesEaten = new Set(nutrition.filter(e => e.name === name).map(e => e.date));
+    if (datesEaten.size < 2) return;
+    const withFood = sessions.filter(s => datesEaten.has(s.date));
+    const withoutFood = sessions.filter(s => !datesEaten.has(s.date));
+    if (withFood.length < 2 || withoutFood.length < 2) return;
+    const sW = avg(withFood.map(s => s.strength)),
+      eW = avg(withFood.map(s => s.endurance));
+    const sWo = avg(withoutFood.map(s => s.strength)),
+      eWo = avg(withoutFood.map(s => s.endurance));
+    const diff = sW - sWo + (eW - eWo);
+    if (Math.abs(diff) < 1.5) return;
+    results.push({
+      name,
+      sW,
+      eW,
+      sWo,
+      eWo,
+      diff,
+      n: withFood.length
+    });
+  });
+  results.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+  return results.slice(0, 3).map(r => ({
+    title: r.diff > 0 ? `Los días que comés ${r.name.toLowerCase()} rendís mejor` : `Los días que comés ${r.name.toLowerCase()} rendís peor`,
+    desc: `Fuerza ${fmt1(r.sW)} / resistencia ${fmt1(r.eW)} esos días, contra ${fmt1(r.sWo)} / ${fmt1(r.eWo)} los demás días.`,
+    n: r.n,
+    good: r.diff > 0
+  }));
+}
+function buildInsights(logs, nutrition) {
+  const sessions = ratedSessions(logs);
+  if (sessions.length < 4) return {
+    sessions,
+    list: []
+  };
+  const list = [...weekdayInsights(sessions), restGapInsight(sessions), trendInsight(sessions), routineInsight(sessions), proteinGoalInsight(sessions, nutrition), ...foodInsights(sessions, nutrition)].filter(Boolean);
+  return {
+    sessions,
+    list
+  };
+}
 const PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1079,6 +1251,8 @@ function SessionScreen({
 }) {
   const [date, setDate] = useState(todayISO());
   const [exercises, setExercises] = useState(() => routine.exercises.map(cloneExerciseForSession));
+  const [strength, setStrength] = useState(5);
+  const [endurance, setEndurance] = useState(5);
   function updateExSets(idx, sets) {
     const arr = exercises.slice();
     arr[idx] = {
@@ -1092,7 +1266,9 @@ function SessionScreen({
       routineId: routine.id,
       routineName: routine.name,
       date,
-      exercises
+      exercises,
+      strength,
+      endurance
     });
   }
   return /*#__PURE__*/React.createElement("div", {
@@ -1147,7 +1323,26 @@ function SessionScreen({
   }, ex.name), /*#__PURE__*/React.createElement(ExercisePlanEditor, {
     sets: ex.sets,
     onChange: sets => updateExSets(idx, sets)
-  })))), /*#__PURE__*/React.createElement("button", {
+  })))), /*#__PURE__*/React.createElement("div", {
+    className: "mt-5 rounded-2xl p-4 space-y-4",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-semibold",
+    style: {
+      color: C.text
+    }
+  }, "¿Cómo te sentiste hoy?"), /*#__PURE__*/React.createElement(RatingSlider, {
+    label: "Fuerza",
+    value: strength,
+    onChange: setStrength
+  }), /*#__PURE__*/React.createElement(RatingSlider, {
+    label: "Resistencia",
+    value: endurance,
+    onChange: setEndurance
+  })), /*#__PURE__*/React.createElement("button", {
     onClick: save,
     className: "mt-6 w-full rounded-2xl py-3.5 text-base font-semibold",
     style: {
@@ -1156,17 +1351,128 @@ function SessionScreen({
     }
   }, "Guardar sesión")));
 }
+function RatingSlider({
+  label,
+  value,
+  onChange
+}) {
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-1.5"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-sm",
+    style: {
+      color: C.textDim
+    }
+  }, label), /*#__PURE__*/React.createElement("span", {
+    className: "text-sm font-semibold",
+    style: {
+      color: C.green,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, value, "/10")), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "1",
+    max: "10",
+    step: "1",
+    value: value,
+    onChange: e => onChange(Number(e.target.value)),
+    className: "w-full",
+    style: {
+      accentColor: C.green
+    }
+  }));
+}
 
 // ---------------------------------------------------------------------------
 // Progress
 // ---------------------------------------------------------------------------
+function InsightsScreen({
+  logs,
+  nutrition,
+  onBack
+}) {
+  const {
+    sessions,
+    list
+  } = buildInsights(logs, nutrition);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "pb-10"
+  }, /*#__PURE__*/React.createElement(BackHeader, {
+    onBack: onBack,
+    title: "Insights"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "px-4 pt-5"
+  }, sessions.length < 4 ? /*#__PURE__*/React.createElement(EmptyState, {
+    icon: /*#__PURE__*/React.createElement(Icon, {
+      name: "bars",
+      size: 22,
+      color: C.green
+    }),
+    title: "Todavía no hay suficientes datos",
+    subtitle: "Guardá algunas sesiones puntuando fuerza y resistencia, y de a poco vas a empezar a ver patrones acá."
+  }) : list.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
+    icon: /*#__PURE__*/React.createElement(Icon, {
+      name: "bars",
+      size: 22,
+      color: C.green
+    }),
+    title: "No encontré patrones claros todavía",
+    subtitle: "Con más sesiones registradas, los patrones se vuelven más confiables."
+  }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("p", {
+    className: "text-xs mb-4",
+    style: {
+      color: C.textDim
+    }
+  }, "Patrones en tus propios datos (", sessions.length, " sesiones puntuadas) — no son científicos, pero te pueden dar una pista."), /*#__PURE__*/React.createElement("div", {
+    className: "space-y-3"
+  }, list.map((ins, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "rounded-2xl p-4",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-start gap-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "mt-0.5 shrink-0"
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: ins.good ? "trendingUp" : "arrowDown",
+    size: 16,
+    color: ins.good ? C.green : C.orange
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-semibold",
+    style: {
+      color: C.text
+    }
+  }, ins.title), /*#__PURE__*/React.createElement("p", {
+    className: "text-sm mt-1",
+    style: {
+      color: C.textDim
+    }
+  }, ins.desc), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs mt-1.5",
+    style: {
+      color: C.textDim2
+    }
+  }, "Basado en ", ins.n, " sesiones")))))))));
+}
 function ProgressFlow({
   routines,
-  logs
+  logs,
+  nutrition
 }) {
   const [routineId, setRoutineId] = useState(null);
   const [exerciseName, setExerciseName] = useState(null);
+  const [showInsights, setShowInsights] = useState(false);
   const routine = routines.find(r => r.id === routineId);
+  if (showInsights) {
+    return /*#__PURE__*/React.createElement(InsightsScreen, {
+      logs: logs,
+      nutrition: nutrition,
+      onBack: () => setShowInsights(false)
+    });
+  }
   if (!routineId) {
     return /*#__PURE__*/React.createElement("div", {
       className: "px-4 pt-6 pb-10"
@@ -1180,7 +1486,29 @@ function ProgressFlow({
       style: {
         color: C.textDim
       }
-    }, "Elegí una rutina para ver tu evolución"), routines.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
+    }, "Elegí una rutina para ver tu evolución"), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setShowInsights(true),
+      className: "w-full flex items-center justify-between rounded-2xl px-4 py-3.5 mb-4",
+      style: {
+        background: "rgba(48,209,88,0.1)",
+        border: `1px solid ${C.border}`
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-3"
+    }, /*#__PURE__*/React.createElement(Icon, {
+      name: "bars",
+      size: 18,
+      color: C.green
+    }), /*#__PURE__*/React.createElement("span", {
+      className: "font-semibold",
+      style: {
+        color: C.text
+      }
+    }, "Insights")), /*#__PURE__*/React.createElement(Icon, {
+      name: "chevronRight",
+      size: 18,
+      color: C.textDim2
+    })), routines.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
       icon: /*#__PURE__*/React.createElement(Icon, {
         name: "trendingUp",
         size: 22,
@@ -1330,7 +1658,13 @@ function ProgressFlow({
       color: C.textDim,
       fontVariantNumeric: "tabular-nums"
     }
-  }, "Serie ", i + 1, " · ", setSummary(s))))))))));
+  }, "Serie ", i + 1, " · ", setSummary(s)))), typeof p.strength === "number" && /*#__PURE__*/React.createElement("p", {
+    className: "text-xs mt-1.5",
+    style: {
+      color: C.textDim2,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, "Fuerza ", p.strength, "/10 · Resistencia ", p.endurance, "/10")))))));
 }
 
 // ---------------------------------------------------------------------------
@@ -1341,17 +1675,36 @@ function NutritionScreen({
   hiddenFoods,
   onAdd,
   onRemoveOne,
-  onHideFood
+  onHideFood,
+  onRemoveEntry,
+  onUpdateEntry
 }) {
   const [adding, setAdding] = useState(false);
   const [customName, setCustomName] = useState("");
   const [customProtein, setCustomProtein] = useState(10);
   const [query, setQuery] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editProtein, setEditProtein] = useState(0);
   const today = todayISO();
   const todayEntries = entries.filter(e => e.date === today);
   const total = todayEntries.reduce((sum, e) => sum + (Number(e.protein) || 0), 0);
   const pct = Math.min(100, Math.round(total / PROTEIN_GOAL * 100));
   const reached = total >= PROTEIN_GOAL;
+  function startEdit(e) {
+    setEditingId(e.id);
+    setEditName(e.name);
+    setEditProtein(e.protein);
+  }
+  function saveEdit() {
+    const n = editName.trim();
+    if (!n || editProtein === "") return;
+    onUpdateEntry(editingId, {
+      name: n,
+      protein: Number(editProtein)
+    });
+    setEditingId(null);
+  }
   function countFor(name) {
     return todayEntries.filter(e => e.name === name).length;
   }
@@ -1563,7 +1916,49 @@ function NutritionScreen({
     title: "Todavía no registraste nada hoy"
   }) : /*#__PURE__*/React.createElement("div", {
     className: "space-y-2"
-  }, todayEntries.map(e => /*#__PURE__*/React.createElement("div", {
+  }, todayEntries.map(e => editingId === e.id ? /*#__PURE__*/React.createElement("div", {
+    key: e.id,
+    className: "flex items-center gap-2 rounded-xl px-3 py-2",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    autoFocus: true,
+    value: editName,
+    onChange: ev => setEditName(ev.target.value),
+    className: "flex-1 bg-transparent outline-none text-sm",
+    style: {
+      color: C.text
+    }
+  }), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    value: editProtein,
+    onChange: ev => setEditProtein(ev.target.value === "" ? "" : Number(ev.target.value)),
+    className: "w-14 rounded-lg px-2 py-1 text-sm outline-none text-center",
+    style: {
+      background: C.surface2,
+      color: C.text,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "text-xs",
+    style: {
+      color: C.textDim
+    }
+  }, "g"), /*#__PURE__*/React.createElement("button", {
+    onClick: saveEdit
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "check",
+    size: 16,
+    color: C.green
+  })), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setEditingId(null)
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "x",
+    size: 16,
+    color: C.textDim
+  }))) : /*#__PURE__*/React.createElement("div", {
     key: e.id,
     className: "flex items-center justify-between rounded-xl px-4 py-2.5",
     style: {
@@ -1571,19 +1966,31 @@ function NutritionScreen({
       border: `1px solid ${C.border}`
     }
   }, /*#__PURE__*/React.createElement("span", {
-    className: "text-sm",
+    className: "text-sm truncate pr-2",
     style: {
       color: C.text
     }
   }, e.name), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-3"
+    className: "flex items-center gap-3 shrink-0"
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-sm font-semibold",
     style: {
       color: C.green,
       fontVariantNumeric: "tabular-nums"
     }
-  }, e.protein, " g"))))));
+  }, e.protein, " g"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => startEdit(e)
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "pencil",
+    size: 14,
+    color: C.blue
+  })), /*#__PURE__*/React.createElement("button", {
+    onClick: () => onRemoveEntry(e.id)
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "trash",
+    size: 14,
+    color: C.red
+  })))))));
 }
 
 // ---------------------------------------------------------------------------
@@ -1763,7 +2170,9 @@ function MainApp() {
         routineId: d.data().routineId,
         routineName: d.data().routineName,
         date: d.data().date,
-        exercises: d.data().exercises || []
+        exercises: d.data().exercises || [],
+        strength: d.data().strength,
+        endurance: d.data().endurance
       })));
       setNutrition(nSnap.docs.map(d => ({
         id: d.id,
@@ -1804,6 +2213,17 @@ function MainApp() {
       await db.collection("nutrition").doc(id).delete();
     } catch (e) {
       setError("No se pudo borrar el alimento.");
+    }
+  }
+  async function updateFoodEntry(id, fields) {
+    setNutrition(prev => prev.map(n => n.id === id ? {
+      ...n,
+      ...fields
+    } : n));
+    try {
+      await db.collection("nutrition").doc(id).update(fields);
+    } catch (e) {
+      setError("No se pudo actualizar el alimento.");
     }
   }
   function removeOneFoodEntry(name) {
@@ -1867,6 +2287,8 @@ function MainApp() {
         routineName: entry.routineName,
         date: entry.date,
         exercises: entry.exercises,
+        strength: entry.strength,
+        endurance: entry.endurance,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       setLogs(prev => [...(prev || []), {
@@ -1874,7 +2296,9 @@ function MainApp() {
         routineId: entry.routineId,
         routineName: entry.routineName,
         date: entry.date,
-        exercises: entry.exercises
+        exercises: entry.exercises,
+        strength: entry.strength,
+        endurance: entry.endurance
       }]);
       setRutinasView({
         type: "detail",
@@ -1951,13 +2375,16 @@ function MainApp() {
     onSave: saveSession
   }), tab === "progreso" && /*#__PURE__*/React.createElement(ProgressFlow, {
     routines: routines,
-    logs: logs
+    logs: logs,
+    nutrition: nutrition
   }), tab === "proteina" && /*#__PURE__*/React.createElement(NutritionScreen, {
     entries: nutrition,
     hiddenFoods: hiddenFoods,
     onAdd: addFood,
     onRemoveOne: removeOneFoodEntry,
-    onHideFood: hideFood
+    onHideFood: hideFood,
+    onRemoveEntry: removeFood,
+    onUpdateEntry: updateFoodEntry
   })), !loading && !inSession && /*#__PURE__*/React.createElement(BottomNav, {
     tab: tab,
     setTab: t => {
