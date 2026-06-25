@@ -1424,9 +1424,7 @@ function LoadingScreen() {
 // ---------------------------------------------------------------------------
 // Main app (once logged in) — talks to Firestore
 // ---------------------------------------------------------------------------
-function MainApp({
-  ownerUid
-}) {
+function MainApp() {
   const [routines, setRoutines] = useState(null);
   const [logs, setLogs] = useState(null);
   const [error, setError] = useState("");
@@ -1437,7 +1435,7 @@ function MainApp({
   }, []);
   async function loadAll() {
     try {
-      const [rSnap, sSnap] = await Promise.all([db.collection("routines").where("ownerUid", "==", ownerUid).get(), db.collection("sessions").where("ownerUid", "==", ownerUid).get()]);
+      const [rSnap, sSnap] = await Promise.all([db.collection("routines").get(), db.collection("sessions").get()]);
       setRoutines(rSnap.docs.map(d => ({
         id: d.id,
         name: d.data().name,
@@ -1459,7 +1457,6 @@ function MainApp({
   async function createRoutine(name) {
     try {
       const ref = await db.collection("routines").add({
-        ownerUid,
         name,
         exercises: [],
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
@@ -1496,7 +1493,6 @@ function MainApp({
   async function saveSession(entry) {
     try {
       const ref = await db.collection("sessions").add({
-        ownerUid,
         routineId: entry.routineId,
         routineName: entry.routineName,
         date: entry.date,
@@ -1520,7 +1516,7 @@ function MainApp({
   }
   async function wipeAll() {
     try {
-      const [rSnap, sSnap] = await Promise.all([db.collection("routines").where("ownerUid", "==", ownerUid).get(), db.collection("sessions").where("ownerUid", "==", ownerUid).get()]);
+      const [rSnap, sSnap] = await Promise.all([db.collection("routines").get(), db.collection("sessions").get()]);
       await Promise.all([...rSnap.docs, ...sSnap.docs].map(d => d.ref.delete()));
       setRoutines([]);
       setLogs([]);
@@ -1630,9 +1626,7 @@ function Root() {
     }, "Activá el método \"Anonymous\" en Firebase → Authentication → Sign-in method."));
   }
   if (!user) return /*#__PURE__*/React.createElement(LoadingScreen, null);
-  return /*#__PURE__*/React.createElement(MainApp, {
-    ownerUid: user.uid
-  });
+  return /*#__PURE__*/React.createElement(MainApp, null);
 }
 ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(Root, null));
 </script>
