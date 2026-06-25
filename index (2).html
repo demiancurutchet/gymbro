@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Mi gimnasio</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<style>
+  html, body { margin: 0; background: #000000; }
+  * { box-sizing: border-box; }
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; }
+  input[type=date]::-webkit-calendar-picker-indicator { filter: invert(1); opacity: 0.65; }
+  ::-webkit-scrollbar { width: 0; height: 0; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+  .animate-in { animation: fadeUp .25s ease both; }
+  @keyframes pulseSoft { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+  .animate-pulse-soft { animation: pulseSoft 1.6s ease-in-out infinite; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect } = React;
+
+// ---------------------------------------------------------------------------
+// !!! PASO OBLIGATORIO: pegá aquí tu configuración de Firebase !!!
+// La conseguís en: Firebase Console -> ícono de engranaje -> Project settings
+// -> "Your apps" -> app web (</>) -> ahí te muestra este mismo objeto.
+// ---------------------------------------------------------------------------
+const firebaseConfig = {
+  apiKey: "PASTE_AQUI",
+  authDomain: "PASTE_AQUI",
+  projectId: "PASTE_AQUI",
+  storageBucket: "PASTE_AQUI",
+  messagingSenderId: "PASTE_AQUI",
+  appId: "PASTE_AQUI",
+};
+
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+// ---------------------------------------------------------------------------
+// Design tokens
+// ---------------------------------------------------------------------------
+const C = {
+  bg: "#000000",
+  surface: "#1C1C1E",
+  surface2: "#2C2C2E",
+  border: "rgba(255,255,255,0.09)",
+  text: "#F5F5F7",
+  textDim: "#98989D",
+  textDim2: "#636366",
+  green: "#30D158",
+  greenText: "#04210C",
+  blue: "#0A84FF",
+  red: "#FF453A",
+  orange: "#FF9F0A",
+};
+
+// ---------------------------------------------------------------------------
+// Tiny inline icons (no external icon library needed)
+// ---------------------------------------------------------------------------
+const ICON_PATHS = {
+  chevronLeft: '<polyline points="15 18 9 12 15 6"/>',
+  chevronRight: '<polyline points="9 18 15 12 9 6"/>',
+  plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  minus: '<line x1="5" y1="12" x2="19" y2="12"/>',
+  x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>',
+  arrowUp: '<line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/>',
+  arrowDown: '<line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/>',
+  dumbbell: '<line x1="7" y1="12" x2="17" y2="12"/><rect x="2" y="8" width="4" height="8" rx="1"/><rect x="18" y="8" width="4" height="8" rx="1"/>',
+  trendingUp: '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>',
+};
+function Icon({ name, size = 18, color = "currentColor" }) {
+  return (
+    <svg
+      width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      dangerouslySetInnerHTML={{ __html: ICON_PATHS[name] || "" }}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers / data model
+// ---------------------------------------------------------------------------
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+function todayISO() {
+  const d = new Date();
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+function fmtShort(iso) {
+  if (!iso) return "";
+  return new Date(iso + "T00:00:00").toLocaleDateString("es-AR", { day: "2-digit", month: "short" });
+}
+function fmtFull(iso) {
+  if (!iso) return "";
+  const s = new Date(iso + "T00:00:00").toLocaleDateString("es-AR", {
+    weekday: "short", day: "2-digit", month: "short", year: "numeric",
+  });
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function makeNormalSet(reps, weight) {
+  return { id: uid(), type: "normal", reps, weight, drops: [] };
+}
+function defaultDraftSets() {
+  return [makeNormalSet(10, 0), makeNormalSet(10, 0), makeNormalSet(10, 0)];
+}
+function getBase(sets) {
+  const normal = sets.find((s) => s.type === "normal");
+  if (normal) return { reps: normal.reps, weight: normal.weight };
+  if (sets[0]) return { reps: sets[0].reps, weight: sets[0].weight };
+  return { reps: 10, weight: 0 };
+}
+function resizeSets(sets, count, base) {
+  const arr = sets.slice();
+  if (count > arr.length) {
+    while (arr.length < count) arr.push(makeNormalSet(base.reps, base.weight));
+  } else if (count < arr.length) {
+    arr.length = Math.max(1, count);
+  }
+  return arr;
+}
+function applyBaseToNormals(sets, reps, weight) {
+  return sets.map((s) => (s.type === "normal" ? { ...s, reps, weight } : s));
+}
+function defaultDrops(base) {
+  return [
+    { id: uid(), reps: base.reps, weight: base.weight },
+    { id: uid(), reps: Math.max(0, Math.round((Number(base.reps) || 0) * 0.7)), weight: 0 },
+  ];
+}
+function toggleSetType(sets, idx, base) {
+  const arr = sets.slice();
+  const s = arr[idx];
+  arr[idx] =
+    s.type === "drop"
+      ? { ...s, type: "normal", reps: base.reps, weight: base.weight, drops: [] }
+      : { ...s, type: "drop", drops: defaultDrops(base) };
+  return arr;
+}
+function setTopWeight(s) {
+  if (s.type === "drop") return Math.max(0, ...(s.drops || []).map((d) => Number(d.weight) || 0));
+  return Number(s.weight) || 0;
+}
+function setSummary(s) {
+  if (s.type === "drop") {
+    return `Drop set · ${s.drops.map((d) => `${d.reps}×${d.weight}kg`).join(" → ")}`;
+  }
+  return `${s.reps} reps × ${s.weight} kg`;
+}
+function cloneSetForSession(s) {
+  return {
+    id: uid(), type: s.type, reps: s.reps, weight: s.weight,
+    drops: (s.drops || []).map((d) => ({ id: uid(), reps: d.reps, weight: d.weight })),
+  };
+}
+function cloneExerciseForSession(ex) {
+  return { id: uid(), exerciseId: ex.id, name: ex.name, sets: ex.sets.map(cloneSetForSession) };
+}
+function historyForExercise(logs, routineId, exerciseName) {
+  const nameLower = exerciseName.trim().toLowerCase();
+  const points = [];
+  logs.filter((l) => l.routineId === routineId).forEach((l) => {
+    const ex = l.exercises.find((e) => e.name.trim().toLowerCase() === nameLower);
+    if (ex && ex.sets.length) {
+      const top = Math.max(0, ...ex.sets.map(setTopWeight));
+      points.push({ date: l.date, weight: top, logId: l.id, sets: ex.sets });
+    }
+  });
+  points.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  return points;
+}
+
+// ---------------------------------------------------------------------------
+// Small UI atoms
+// ---------------------------------------------------------------------------
+function NumField({ label, value, onChange, step = 1 }) {
+  return (
+    <label className="flex-1 flex flex-col gap-1">
+      <span className="text-xs" style={{ color: C.textDim2 }}>{label}</span>
+      <input
+        type="number" inputMode="decimal" step={step} value={value}
+        onChange={(e) => { const v = e.target.value; onChange(v === "" ? "" : Number(v)); }}
+        className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+        style={{ background: C.surface, color: C.text, border: `1px solid ${C.border}`, fontVariantNumeric: "tabular-nums" }}
+      />
+    </label>
+  );
+}
+function EmptyState({ icon, title, subtitle, action }) {
+  return (
+    <div className="flex flex-col items-center text-center gap-3 py-16 px-6">
+      <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: C.surface }}>{icon}</div>
+      <div>
+        <p className="font-semibold" style={{ color: C.text }}>{title}</p>
+        {subtitle && <p className="text-sm mt-1" style={{ color: C.textDim }}>{subtitle}</p>}
+      </div>
+      {action}
+    </div>
+  );
+}
+function BackHeader({ onBack, title, right }) {
+  return (
+    <div className="sticky top-0 z-10 backdrop-blur-xl" style={{ background: "rgba(0,0,0,0.7)", borderBottom: `1px solid ${C.border}` }}>
+      <div className="flex items-center justify-between px-4 py-3">
+        <button onClick={onBack} className="flex items-center gap-1 text-sm" style={{ color: C.blue }}>
+          <Icon name="chevronLeft" size={20} /> Atrás
+        </button>
+        <span className="font-semibold truncate px-2" style={{ color: C.text }}>{title}</span>
+        <div style={{ minWidth: 48, display: "flex", justifyContent: "flex-end" }}>{right}</div>
+      </div>
+    </div>
+  );
+}
+function MiniLineChart({ points }) {
+  const w = 600, h = 160, padL = 10, padR = 10, padT = 14, padB = 14;
+  const weights = points.map((p) => p.weight);
+  const min = Math.min(...weights), max = Math.max(...weights);
+  const range = max - min || 1;
+  const stepX = points.length > 1 ? (w - padL - padR) / (points.length - 1) : 0;
+  const coords = points.map((p, i) => ({
+    x: padL + i * stepX,
+    y: padT + (h - padT - padB) * (1 - (p.weight - min) / range),
+    p,
+  }));
+  const path = coords.map((c, i) => (i === 0 ? "M" : "L") + c.x.toFixed(1) + "," + c.y.toFixed(1)).join(" ");
+  return (
+    <div>
+      <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h}>
+        <path d={path} fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        {coords.map((c, i) => <circle key={i} cx={c.x} cy={c.y} r="3.5" fill={C.green} />)}
+      </svg>
+      <div className="flex justify-between text-xs px-1" style={{ color: C.textDim2 }}>
+        <span>{fmtShort(points[0].date)}</span>
+        <span>{fmtShort(points[points.length - 1].date)}</span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Exercise plan editor
+// ---------------------------------------------------------------------------
+function ExercisePlanEditor({ sets, onChange }) {
+  const base = getBase(sets);
+  const count = sets.length;
+
+  function changeCount(next) { onChange(resizeSets(sets, Math.max(1, Math.min(12, next)), base)); }
+  function changeReps(v) { onChange(applyBaseToNormals(sets, v, base.weight)); }
+  function changeWeight(v) { onChange(applyBaseToNormals(sets, base.reps, v)); }
+  function toggle(idx) { onChange(toggleSetType(sets, idx, base)); }
+  function updateDropStage(idx, di, nextDrop) {
+    const arr = sets.slice(); const s = arr[idx]; const drops = s.drops.slice();
+    drops[di] = nextDrop; arr[idx] = { ...s, drops }; onChange(arr);
+  }
+  function addDropStage(idx) {
+    const arr = sets.slice(); const s = arr[idx];
+    arr[idx] = { ...s, drops: [...s.drops, { id: uid(), reps: 6, weight: 0 }] }; onChange(arr);
+  }
+  function removeDropStage(idx, di) {
+    const arr = sets.slice(); const s = arr[idx]; const drops = s.drops.slice();
+    drops.splice(di, 1); arr[idx] = { ...s, drops }; onChange(arr);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between rounded-xl px-3 py-2.5" style={{ background: C.surface2 }}>
+        <span className="text-sm font-medium" style={{ color: C.text }}>Series</span>
+        <div className="flex items-center gap-3">
+          <button onClick={() => changeCount(count - 1)} className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: C.surface, color: C.text }}>
+            <Icon name="minus" size={14} />
+          </button>
+          <span className="w-5 text-center font-semibold" style={{ color: C.text, fontVariantNumeric: "tabular-nums" }}>{count}</span>
+          <button onClick={() => changeCount(count + 1)} className="w-7 h-7 rounded-full flex items-center justify-center" style={{ background: C.surface, color: C.text }}>
+            <Icon name="plus" size={14} />
+          </button>
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <NumField label="Reps por serie" value={base.reps} onChange={changeReps} />
+        <NumField label="Peso (kg)" value={base.weight} step={0.5} onChange={changeWeight} />
+      </div>
+
+      <div>
+        <p className="text-xs mb-2" style={{ color: C.textDim }}>Tocá una serie para marcarla como drop set</p>
+        <div className="flex flex-wrap gap-2">
+          {sets.map((s, idx) => (
+            <button key={s.id} onClick={() => toggle(idx)} className="text-xs font-medium px-3 py-1.5 rounded-full"
+              style={s.type === "drop" ? { background: "rgba(255,159,10,0.18)", color: C.orange } : { background: C.surface2, color: C.textDim }}>
+              Serie {idx + 1}{s.type === "drop" ? " · drop" : ""}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {sets.map((s, idx) => s.type === "drop" && (
+        <div key={s.id} className="rounded-xl p-3" style={{ background: C.surface2 }}>
+          <p className="text-xs font-medium mb-2" style={{ color: C.orange }}>Serie {idx + 1} · bajadas del drop set</p>
+          <div className="space-y-2">
+            {s.drops.map((d, di) => (
+              <div key={d.id} className="flex items-center gap-2">
+                <span className="text-xs w-4 text-center mt-4" style={{ color: C.textDim2 }}>{di + 1}</span>
+                <NumField label="Reps" value={d.reps} onChange={(v) => updateDropStage(idx, di, { ...d, reps: v })} />
+                <NumField label="Peso (kg)" value={d.weight} step={0.5} onChange={(v) => updateDropStage(idx, di, { ...d, weight: v })} />
+                {s.drops.length > 2 && (
+                  <button onClick={() => removeDropStage(idx, di)} className="mt-4"><Icon name="x" size={14} color={C.textDim} /></button>
+                )}
+              </div>
+            ))}
+            <button onClick={() => addDropStage(idx)} className="text-xs font-medium" style={{ color: C.blue }}>+ Agregar bajada</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Routines list
+// ---------------------------------------------------------------------------
+function RoutinesList({ routines, logs, onOpen, onCreate, onDelete, onWipe, userEmail, onLogout }) {
+  const [editing, setEditing] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [confirmId, setConfirmId] = useState(null);
+  const [confirmWipe, setConfirmWipe] = useState(false);
+
+  function lastSession(routineId) {
+    const ls = logs.filter((l) => l.routineId === routineId).sort((a, b) => (a.date < b.date ? 1 : -1));
+    return ls[0]?.date;
+  }
+  function submitCreate() {
+    const n = name.trim(); if (!n) return;
+    onCreate(n); setName(""); setCreating(false);
+  }
+
+  return (
+    <div className="px-4 pt-6 pb-4">
+      <div className="flex items-end justify-between mb-1">
+        <h1 className="text-3xl font-bold tracking-tight" style={{ color: C.text }}>Rutinas</h1>
+        {routines.length > 0 && (
+          <button onClick={() => setEditing((e) => !e)} className="text-sm font-medium" style={{ color: C.blue }}>{editing ? "Listo" : "Editar"}</button>
+        )}
+      </div>
+      <p className="text-sm mb-5" style={{ color: C.textDim }}>
+        {routines.length} {routines.length === 1 ? "rutina" : "rutinas"} · {userEmail}
+      </p>
+
+      {routines.length === 0 && !creating && (
+        <EmptyState
+          icon={<Icon name="dumbbell" size={24} color={C.green} />}
+          title="Todavía no tenés rutinas"
+          subtitle="Creá tu primera rutina para empezar a registrar tus entrenamientos."
+          action={<button onClick={() => setCreating(true)} className="mt-1 px-4 py-2 rounded-full text-sm font-semibold" style={{ background: C.green, color: C.greenText }}>Crear rutina</button>}
+        />
+      )}
+
+      <div className="space-y-2.5">
+        {routines.map((r) => {
+          const last = lastSession(r.id);
+          return (
+            <div key={r.id} className="animate-in flex items-center gap-3 rounded-2xl px-4 py-3.5" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
+              {confirmId === r.id ? (
+                <div className="flex-1 flex items-center justify-between">
+                  <span className="text-sm" style={{ color: C.text }}>¿Eliminar "{r.name}"?</span>
+                  <div className="flex gap-3">
+                    <button onClick={() => { onDelete(r.id); setConfirmId(null); }} className="text-sm font-semibold" style={{ color: C.red }}>Eliminar</button>
+                    <button onClick={() => setConfirmId(null)} className="text-sm" style={{ color: C.textDim }}>Cancelar</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => (editing ? null : onOpen(r.id))} className="flex-1 flex items-center justify-between text-left">
+                  <div>
+                    <p className="font-semibold" style={{ color: C.text }}>{r.name}</p>
+                    <p className="text-xs mt-0.5" style={{ color: C.textDim }}>
+                      {r.exercises.length} {r.exercises.length === 1 ? "ejercicio" : "ejercicios"}{last ? ` · última vez ${fmtShort(last)}` : ""}
+                    </p>
+                  </div>
+                  {!editing && <Icon name="chevronRight" size={18} color={C.textDim2} />}
+                </button>
+              )}
+              {editing && confirmId !== r.id && (
+                <button onClick={() => setConfirmId(r.id)} className="p-1"><Icon name="trash" size={18} color={C.red} /></button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {creating ? (
+        <div className="mt-3 rounded-2xl p-3 flex items-center gap-2" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
+          <input autoFocus value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submitCreate(); }}
+            placeholder="Nombre de la rutina (ej: Push Day)" className="flex-1 bg-transparent outline-none text-sm" style={{ color: C.text }} />
+          <button onClick={submitCreate} className="text-sm font-semibold" style={{ color: C.green }}>Crear</button>
+          <button onClick={() => { setCreating(false); setName(""); }}><Icon name="x" size={16} color={C.textDim} /></button>
+        </div>
+      ) : routines.length > 0 && (
+        <button onClick={() => setCreating(true)} className="mt-3 w-full flex items-center justify-center gap-1.5 rounded-2xl py-3 text-sm font-semibold" style={{ border: `1px dashed ${C.border}`, color: C.green }}>
+          <Icon name="plus" size={16} /> Nueva rutina
+        </button>
+      )}
+
+      <div className="mt-10 text-center space-y-3">
+        <button onClick={onLogout} className="text-xs font-medium" style={{ color: C.blue }}>Cerrar sesión</button>
+        <div>
+          {confirmWipe ? (
+            <div className="text-xs" style={{ color: C.textDim }}>
+              ¿Borrar todos los datos?{" "}
+              <button onClick={() => { onWipe(); setConfirmWipe(false); }} className="font-semibold" style={{ color: C.red }}>Sí, borrar</button>{" "}
+              ·{" "}<button onClick={() => setConfirmWipe(false)} style={{ color: C.blue }}>Cancelar</button>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmWipe(true)} className="text-xs" style={{ color: C.textDim2 }}>Borrar todos los datos</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Routine detail
+// ---------------------------------------------------------------------------
+function RoutineDetail({ routine, onBack, onChange, onDelete, onStartSession }) {
+  const [editing, setEditing] = useState(false);
+  const [confirmDeleteEx, setConfirmDeleteEx] = useState(null);
+  const [confirmDeleteRoutine, setConfirmDeleteRoutine] = useState(false);
+  const [addingExercise, setAddingExercise] = useState(false);
+  const [newExName, setNewExName] = useState("");
+  const [draftSets, setDraftSets] = useState(defaultDraftSets);
+
+  function updateName(n) { onChange({ ...routine, name: n }); }
+  function updateExercise(idx, ex) { const exs = routine.exercises.slice(); exs[idx] = ex; onChange({ ...routine, exercises: exs }); }
+  function removeExercise(idx) { const exs = routine.exercises.slice(); exs.splice(idx, 1); onChange({ ...routine, exercises: exs }); }
+  function startAdding() { setNewExName(""); setDraftSets(defaultDraftSets()); setAddingExercise(true); }
+  function cancelAdding() { setAddingExercise(false); }
+  function confirmAdding() {
+    const n = newExName.trim(); if (!n) return;
+    onChange({ ...routine, exercises: [...routine.exercises, { id: uid(), name: n, sets: draftSets }] });
+    setAddingExercise(false);
+  }
+
+  return (
+    <div className="pb-10">
+      <BackHeader onBack={onBack} title={routine.name} right={
+        <button onClick={() => setEditing((e) => !e)} className="text-sm font-medium" style={{ color: C.blue }}>{editing ? "Listo" : "Editar"}</button>
+      } />
+      <div className="px-4 pt-5">
+        {editing ? (
+          <input value={routine.name} onChange={(e) => updateName(e.target.value)}
+            className="text-2xl font-bold tracking-tight bg-transparent outline-none w-full mb-5 pb-2" style={{ color: C.text, borderBottom: `1px solid ${C.border}` }} />
+        ) : (
+          <h1 className="text-2xl font-bold tracking-tight mb-5" style={{ color: C.text }}>{routine.name}</h1>
+        )}
+
+        {routine.exercises.length === 0 && !addingExercise && (
+          <EmptyState icon={<Icon name="dumbbell" size={22} color={C.green} />} title="Sin ejercicios todavía" subtitle="Agregá ejercicios para armar esta rutina."
+            action={<button onClick={startAdding} className="mt-1 px-4 py-2 rounded-full text-sm font-semibold" style={{ background: C.green, color: C.greenText }}>Agregar ejercicio</button>} />
+        )}
+
+        <div className="space-y-3">
+          {routine.exercises.map((ex, idx) => (
+            <div key={ex.id} className="rounded-2xl p-4" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
+              <div className="flex items-center justify-between mb-3">
+                {editing ? (
+                  <input value={ex.name} onChange={(e) => updateExercise(idx, { ...ex, name: e.target.value })} className="font-semibold bg-transparent outline-none flex-1" style={{ color: C.text }} />
+                ) : (
+                  <p className="font-semibold" style={{ color: C.text }}>{ex.name}</p>
+                )}
+                {editing && (confirmDeleteEx === ex.id ? (
+                  <div className="flex gap-2 ml-2">
+                    <button onClick={() => { removeExercise(idx); setConfirmDeleteEx(null); }} className="text-xs font-semibold" style={{ color: C.red }}>Eliminar</button>
+                    <button onClick={() => setConfirmDeleteEx(null)} className="text-xs" style={{ color: C.textDim }}>Cancelar</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setConfirmDeleteEx(ex.id)} className="ml-2 p-1"><Icon name="trash" size={16} color={C.red} /></button>
+                ))}
+              </div>
+              {editing ? (
+                <ExercisePlanEditor sets={ex.sets} onChange={(sets) => updateExercise(idx, { ...ex, sets })} />
+              ) : (
+                <div className="space-y-1.5">
+                  {ex.sets.map((s, i) => (
+                    <p key={s.id} className="text-sm" style={{ color: C.textDim, fontVariantNumeric: "tabular-nums" }}>
+                      <span style={{ color: C.textDim2 }}>Serie {i + 1} ·</span> {setSummary(s)}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {addingExercise ? (
+          <div className="mt-3 rounded-2xl p-4 space-y-4" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
+            <input autoFocus value={newExName} onChange={(e) => setNewExName(e.target.value)} placeholder="Nombre del ejercicio (ej: Press banca)"
+              className="w-full bg-transparent outline-none text-base font-semibold pb-2" style={{ color: C.text, borderBottom: `1px solid ${C.border}` }} />
+            <ExercisePlanEditor sets={draftSets} onChange={setDraftSets} />
+            <div className="flex gap-3 pt-1">
+              <button onClick={confirmAdding} className="flex-1 rounded-xl py-2.5 text-sm font-semibold" style={{ background: C.green, color: C.greenText }}>Agregar ejercicio</button>
+              <button onClick={cancelAdding} className="px-4 rounded-xl py-2.5 text-sm font-medium" style={{ color: C.textDim, border: `1px solid ${C.border}` }}>Cancelar</button>
+            </div>
+          </div>
+        ) : editing && routine.exercises.length > 0 && (
+          <button onClick={startAdding} className="mt-3 w-full flex items-center justify-center gap-1.5 rounded-2xl py-3 text-sm font-semibold" style={{ border: `1px dashed ${C.border}`, color: C.green }}>
+            <Icon name="plus" size={16} /> Agregar ejercicio
+          </button>
+        )}
+
+        {!editing && routine.exercises.length > 0 && (
+          <button onClick={onStartSession} className="mt-6 w-full rounded-2xl py-3.5 text-base font-semibold" style={{ background: C.green, color: C.greenText }}>Iniciar sesión de hoy</button>
+        )}
+
+        {editing && (
+          <div className="mt-8 text-center">
+            {confirmDeleteRoutine ? (
+              <div className="text-sm" style={{ color: C.textDim }}>
+                ¿Eliminar esta rutina?{" "}<button onClick={onDelete} className="font-semibold" style={{ color: C.red }}>Sí, eliminar</button>{" "}
+                ·{" "}<button onClick={() => setConfirmDeleteRoutine(false)} style={{ color: C.blue }}>Cancelar</button>
+              </div>
+            ) : (
+              <button onClick={() => setConfirmDeleteRoutine(true)} className="text-sm font-medium" style={{ color: C.red }}>Eliminar rutina</button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Session logging
+// ---------------------------------------------------------------------------
+function SessionScreen({ routine, onCancel, onSave }) {
+  const [date, setDate] = useState(todayISO());
+  const [exercises, setExercises] = useState(() => routine.exercises.map(cloneExerciseForSession));
+
+  function updateExSets(idx, sets) { const arr = exercises.slice(); arr[idx] = { ...arr[idx], sets }; setExercises(arr); }
+  function save() { onSave({ routineId: routine.id, routineName: routine.name, date, exercises }); }
+
+  return (
+    <div className="pb-10">
+      <BackHeader onBack={onCancel} title="Sesión de hoy" right={<button onClick={onCancel}><Icon name="x" size={20} color={C.textDim} /></button>} />
+      <div className="px-4 pt-5">
+        <div className="flex items-center justify-between mb-5 rounded-2xl px-4 py-3" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
+          <span className="text-sm font-medium" style={{ color: C.text }}>{routine.name}</span>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="bg-transparent text-sm outline-none" style={{ color: C.text, colorScheme: "dark", fontVariantNumeric: "tabular-nums" }} />
+        </div>
+        <div className="space-y-3">
+          {exercises.map((ex, idx) => (
+            <div key={ex.id} className="rounded-2xl p-4" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
+              <p className="font-semibold mb-3" style={{ color: C.text }}>{ex.name}</p>
+              <ExercisePlanEditor sets={ex.sets} onChange={(sets) => updateExSets(idx, sets)} />
+            </div>
+          ))}
+        </div>
+        <button onClick={save} className="mt-6 w-full rounded-2xl py-3.5 text-base font-semibold" style={{ background: C.green, color: C.greenText }}>Guardar sesión</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Progress
+// ---------------------------------------------------------------------------
+function ProgressFlow({ routines, logs }) {
+  const [routineId, setRoutineId] = useState(null);
+  const [exerciseName, setExerciseName] = useState(null);
+  const routine = routines.find((r) => r.id === routineId);
+
+  if (!routineId) {
+    return (
+      <div className="px-4 pt-6 pb-10">
+        <h1 className="text-3xl font-bold tracking-tight mb-1" style={{ color: C.text }}>Progreso</h1>
+        <p className="text-sm mb-5" style={{ color: C.textDim }}>Elegí una rutina para ver tu evolución</p>
+        {routines.length === 0 ? (
+          <EmptyState icon={<Icon name="trendingUp" size={22} color={C.green} />} title="Todavía no hay nada que mostrar" subtitle="Creá una rutina y registrá tu primera sesión para empezar a ver tu progreso." />
+        ) : (
+          <div className="space-y-2.5">
+            {routines.map((r) => (
+              <button key={r.id} onClick={() => setRoutineId(r.id)} className="w-full flex items-center justify-between rounded-2xl px-4 py-3.5" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
+                <span className="font-semibold" style={{ color: C.text }}>{r.name}</span>
+                <Icon name="chevronRight" size={18} color={C.textDim2} />
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (!exerciseName) {
+    return (
+      <div className="pb-10">
+        <BackHeader onBack={() => setRoutineId(null)} title={routine.name} />
+        <div className="px-4 pt-5">
+          {routine.exercises.length === 0 ? (
+            <EmptyState icon={<Icon name="dumbbell" size={22} color={C.green} />} title="Esta rutina no tiene ejercicios" />
+          ) : (
+            <div className="space-y-2.5">
+              {routine.exercises.map((ex) => (
+                <button key={ex.id} onClick={() => setExerciseName(ex.name)} className="w-full flex items-center justify-between rounded-2xl px-4 py-3.5" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
+                  <span className="font-medium" style={{ color: C.text }}>{ex.name}</span>
+                  <Icon name="chevronRight" size={18} color={C.textDim2} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const points = historyForExercise(logs, routine.id, exerciseName);
+  const last = points[points.length - 1];
+  const prev = points[points.length - 2];
+  const delta = last && prev ? Math.round((last.weight - prev.weight) * 100) / 100 : null;
+
+  return (
+    <div className="pb-10">
+      <BackHeader onBack={() => setExerciseName(null)} title={exerciseName} />
+      <div className="px-4 pt-5">
+        {points.length === 0 ? (
+          <EmptyState icon={<Icon name="trendingUp" size={22} color={C.green} />} title="Sin registros todavía" subtitle="Registrá una sesión de esta rutina para empezar a ver tu evolución." />
+        ) : (
+          <React.Fragment>
+            <div className="flex items-center gap-4 mb-5">
+              <div>
+                <p className="text-3xl font-bold tracking-tight" style={{ color: C.text, fontVariantNumeric: "tabular-nums" }}>{last.weight} kg</p>
+                <p className="text-xs mt-0.5" style={{ color: C.textDim }}>Último registro · {fmtFull(last.date)}</p>
+              </div>
+              {delta !== null && (
+                <div className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold" style={{
+                  background: delta > 0 ? "rgba(48,209,88,0.15)" : delta < 0 ? "rgba(255,69,58,0.15)" : C.surface2,
+                  color: delta > 0 ? C.green : delta < 0 ? C.red : C.textDim,
+                }}>
+                  <Icon name={delta > 0 ? "arrowUp" : delta < 0 ? "arrowDown" : "minus"} size={12} />
+                  {Math.abs(delta)} kg
+                </div>
+              )}
+            </div>
+
+            {points.length >= 2 && (
+              <div className="rounded-2xl p-3 mb-5" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
+                <MiniLineChart points={points} />
+              </div>
+            )}
+
+            <p className="text-xs font-medium mb-2" style={{ color: C.textDim }}>Historial</p>
+            <div className="space-y-2">
+              {points.slice().reverse().map((p) => (
+                <div key={p.logId} className="rounded-xl px-4 py-3" style={{ background: C.surface, border: `1px solid ${C.border}` }}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium" style={{ color: C.text }}>{fmtFull(p.date)}</span>
+                    <span className="text-sm font-semibold" style={{ color: C.green, fontVariantNumeric: "tabular-nums" }}>{p.weight} kg</span>
+                  </div>
+                  <div className="space-y-0.5">
+                    {p.sets.map((s, i) => (
+                      <p key={s.id || i} className="text-xs" style={{ color: C.textDim, fontVariantNumeric: "tabular-nums" }}>Serie {i + 1} · {setSummary(s)}</p>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </React.Fragment>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Bottom nav
+// ---------------------------------------------------------------------------
+function BottomNav({ tab, setTab }) {
+  const items = [{ k: "rutinas", l: "Rutinas", icon: "dumbbell" }, { k: "progreso", l: "Progreso", icon: "trendingUp" }];
+  return (
+    <div className="fixed bottom-0 inset-x-0 backdrop-blur-xl" style={{ background: "rgba(0,0,0,0.75)", borderTop: `1px solid ${C.border}`, paddingBottom: "env(safe-area-inset-bottom)" }}>
+      <div className="flex max-w-xl mx-auto">
+        {items.map(({ k, l, icon }) => (
+          <button key={k} onClick={() => setTab(k)} className="flex-1 flex flex-col items-center gap-1 py-2.5">
+            <Icon name={icon} size={20} color={tab === k ? C.green : C.textDim2} />
+            <span className="text-xs font-medium" style={{ color: tab === k ? C.green : C.textDim2 }}>{l}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Login screen (passwordless, Firebase email link)
+// ---------------------------------------------------------------------------
+function LoginScreen({ error: incomingError }) {
+  const [email, setEmail] = useState("");
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState(incomingError || "");
+  const [loading, setLoading] = useState(false);
+
+  function sendLink() {
+    const trimmed = email.trim();
+    if (!trimmed) return;
+    setLoading(true); setError("");
+    window.localStorage.setItem("emailForSignIn", trimmed);
+    auth.sendSignInLinkToEmail(trimmed, {
+      url: window.location.origin + window.location.pathname,
+      handleCodeInApp: true,
+    }).then(() => setSent(true)).catch((e) => setError(e.message)).finally(() => setLoading(false));
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center px-6" style={{ minHeight: "100vh" }}>
+      <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: C.surface }}>
+        <Icon name="dumbbell" size={28} color={C.green} />
+      </div>
+      <h1 className="text-2xl font-bold mb-1" style={{ color: C.text }}>Mi gimnasio</h1>
+      <p className="text-sm mb-6 text-center max-w-xs" style={{ color: C.textDim }}>
+        Ingresá tu email para acceder a tus rutinas desde cualquier dispositivo
+      </p>
+      {sent ? (
+        <p className="text-sm text-center max-w-xs" style={{ color: C.green }}>
+          Listo. Revisá tu email y tocá el link para entrar.
+        </p>
+      ) : (
+        <div className="w-full max-w-sm space-y-3">
+          <input
+            type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") sendLink(); }}
+            placeholder="tu@email.com" autoFocus
+            className="w-full rounded-xl px-4 py-3 text-sm outline-none"
+            style={{ background: C.surface, color: C.text, border: `1px solid ${C.border}` }}
+          />
+          <button onClick={sendLink} disabled={loading} className="w-full rounded-xl py-3 text-sm font-semibold" style={{ background: C.green, color: C.greenText, opacity: loading ? 0.6 : 1 }}>
+            {loading ? "Enviando..." : "Enviarme el link"}
+          </button>
+          {error && <p className="text-xs text-center" style={{ color: C.red }}>{error}</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LoadingScreen() {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3" style={{ minHeight: "100vh" }}>
+      <Icon name="dumbbell" size={28} color={C.green} />
+      <p className="text-sm animate-pulse-soft" style={{ color: C.textDim }}>Cargando...</p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main app (once logged in) — talks to Firestore
+// ---------------------------------------------------------------------------
+function MainApp({ ownerUid, userEmail, onLogout }) {
+  const [routines, setRoutines] = useState(null);
+  const [logs, setLogs] = useState(null);
+  const [error, setError] = useState("");
+  const [tab, setTab] = useState("rutinas");
+  const [rutinasView, setRutinasView] = useState(null);
+
+  useEffect(() => { loadAll(); }, []);
+
+  async function loadAll() {
+    try {
+      const [rSnap, sSnap] = await Promise.all([
+        db.collection("routines").where("ownerUid", "==", ownerUid).get(),
+        db.collection("sessions").where("ownerUid", "==", ownerUid).get(),
+      ]);
+      setRoutines(rSnap.docs.map((d) => ({ id: d.id, name: d.data().name, exercises: d.data().exercises || [] })));
+      setLogs(sSnap.docs.map((d) => ({ id: d.id, routineId: d.data().routineId, routineName: d.data().routineName, date: d.data().date, exercises: d.data().exercises || [] })));
+    } catch (e) {
+      setError("No se pudieron cargar los datos.");
+      setRoutines([]); setLogs([]);
+    }
+  }
+
+  async function createRoutine(name) {
+    try {
+      const ref = await db.collection("routines").add({
+        ownerUid, name, exercises: [], createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      setRoutines((prev) => [...(prev || []), { id: ref.id, name, exercises: [] }]);
+    } catch (e) { setError("No se pudo crear la rutina."); }
+  }
+  async function updateRoutine(updated) {
+    setRoutines((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+    try {
+      await db.collection("routines").doc(updated.id).update({ name: updated.name, exercises: updated.exercises });
+    } catch (e) { setError("No se pudo guardar el cambio."); }
+  }
+  async function deleteRoutine(id) {
+    setRoutines((prev) => prev.filter((r) => r.id !== id));
+    setRutinasView(null);
+    try { await db.collection("routines").doc(id).delete(); } catch (e) { setError("No se pudo eliminar la rutina."); }
+  }
+  async function saveSession(entry) {
+    try {
+      const ref = await db.collection("sessions").add({
+        ownerUid, routineId: entry.routineId, routineName: entry.routineName,
+        date: entry.date, exercises: entry.exercises, createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+      });
+      setLogs((prev) => [...(prev || []), { id: ref.id, routineId: entry.routineId, routineName: entry.routineName, date: entry.date, exercises: entry.exercises }]);
+      setRutinasView({ type: "detail", id: entry.routineId });
+    } catch (e) { setError("No se pudo guardar la sesión."); }
+  }
+  async function wipeAll() {
+    try {
+      const [rSnap, sSnap] = await Promise.all([
+        db.collection("routines").where("ownerUid", "==", ownerUid).get(),
+        db.collection("sessions").where("ownerUid", "==", ownerUid).get(),
+      ]);
+      await Promise.all([...rSnap.docs, ...sSnap.docs].map((d) => d.ref.delete()));
+      setRoutines([]); setLogs([]); setRutinasView(null);
+    } catch (e) { setError("No se pudo borrar todo."); }
+  }
+
+  const loading = routines === null || logs === null;
+  const inSession = tab === "rutinas" && rutinasView?.type === "session";
+
+  return (
+    <div className="min-h-screen w-full" style={{ background: C.bg }}>
+      <div className="max-w-xl mx-auto min-h-screen relative" style={{ color: C.text }}>
+        {error && (
+          <div className="px-4 pt-3">
+            <div className="rounded-xl px-3 py-2 text-xs flex items-center justify-between" style={{ background: "rgba(255,69,58,0.15)", color: C.red }}>
+              <span>{error}</span>
+              <button onClick={() => setError("")}><Icon name="x" size={14} /></button>
+            </div>
+          </div>
+        )}
+
+        {loading ? (
+          <LoadingScreen />
+        ) : (
+          <div className="pb-20">
+            {tab === "rutinas" && !rutinasView && (
+              <RoutinesList routines={routines} logs={logs} userEmail={userEmail} onLogout={onLogout}
+                onOpen={(id) => setRutinasView({ type: "detail", id })} onCreate={createRoutine} onDelete={deleteRoutine} onWipe={wipeAll} />
+            )}
+            {tab === "rutinas" && rutinasView?.type === "detail" && (
+              <RoutineDetail routine={routines.find((r) => r.id === rutinasView.id)} onBack={() => setRutinasView(null)}
+                onChange={updateRoutine} onDelete={() => deleteRoutine(rutinasView.id)} onStartSession={() => setRutinasView({ type: "session", id: rutinasView.id })} />
+            )}
+            {tab === "rutinas" && rutinasView?.type === "session" && (
+              <SessionScreen routine={routines.find((r) => r.id === rutinasView.id)} onCancel={() => setRutinasView({ type: "detail", id: rutinasView.id })} onSave={saveSession} />
+            )}
+            {tab === "progreso" && <ProgressFlow routines={routines} logs={logs} />}
+          </div>
+        )}
+
+        {!loading && !inSession && <BottomNav tab={tab} setTab={(t) => { setTab(t); setRutinasView(null); }} />}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Root: handles Firebase auth state (incl. completing the email-link sign-in)
+// ---------------------------------------------------------------------------
+function Root() {
+  const [user, setUser] = useState(undefined); // undefined = checking
+  const [linkError, setLinkError] = useState("");
+
+  useEffect(() => {
+    if (auth.isSignInWithEmailLink(window.location.href)) {
+      let storedEmail = window.localStorage.getItem("emailForSignIn");
+      if (!storedEmail) storedEmail = window.prompt("Confirmá tu email para completar el ingreso:");
+      if (storedEmail) {
+        auth.signInWithEmailLink(storedEmail, window.location.href)
+          .then(() => {
+            window.localStorage.removeItem("emailForSignIn");
+            window.history.replaceState({}, document.title, window.location.pathname);
+          })
+          .catch((e) => setLinkError(e.message));
+      }
+    }
+    const unsubscribe = auth.onAuthStateChanged((u) => setUser(u));
+    return unsubscribe;
+  }, []);
+
+  if (user === undefined) return <LoadingScreen />;
+  if (!user) return <LoginScreen error={linkError} />;
+  return <MainApp ownerUid={user.uid} userEmail={user.email} onLogout={() => auth.signOut()} />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Root />);
+</script>
+</body>
+</html>
