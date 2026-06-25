@@ -656,7 +656,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.1.6";
+const APP_VERSION = "1.1.7";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -993,16 +993,11 @@ function ExercisePlanEditor({
   function changeCount(next) {
     onChange(resizeSets(sets, Math.max(1, Math.min(12, next)), base));
   }
-  function applyToAll(reps, weight) {
-    onChange(applyBaseToNormals(sets, reps, weight));
+  function changeReps(v) {
+    onChange(applyBaseToNormals(sets, v, base.weight));
   }
-  function updateSet(idx, fields) {
-    const arr = sets.slice();
-    arr[idx] = {
-      ...arr[idx],
-      ...fields
-    };
-    onChange(arr);
+  function changeWeight(v) {
+    onChange(applyBaseToNormals(sets, base.reps, v));
   }
   function toggle(idx) {
     onChange(toggleSetType(sets, idx, base));
@@ -1113,67 +1108,46 @@ function ExercisePlanEditor({
     name: "plus",
     size: 14
   })))), /*#__PURE__*/React.createElement("div", {
-    className: "rounded-xl p-3",
-    style: {
-      background: C.surface2
-    }
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "text-xs mb-2",
-    style: {
-      color: C.textDim
-    }
-  }, "Aplicar a todas las series normales"), /*#__PURE__*/React.createElement("div", {
     className: "flex gap-2"
   }, /*#__PURE__*/React.createElement(NumField, {
-    label: "Reps",
+    label: "Reps por serie",
     value: base.reps,
-    onChange: v => applyToAll(v, base.weight)
+    onChange: changeReps
   }), /*#__PURE__*/React.createElement(NumField, {
     label: weightLabel,
     value: base.weight,
     step: 0.5,
-    onChange: v => applyToAll(base.reps, v)
-  }))), /*#__PURE__*/React.createElement("div", {
-    className: "space-y-2"
-  }, sets.map((s, idx) => /*#__PURE__*/React.createElement("div", {
+    onChange: changeWeight
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    className: "text-xs mb-2",
+    style: {
+      color: C.textDim
+    }
+  }, "Tocá una serie para marcarla como drop set"), /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-wrap gap-2"
+  }, sets.map((s, idx) => /*#__PURE__*/React.createElement("button", {
+    key: s.id,
+    onClick: () => toggle(idx),
+    className: "text-xs font-medium px-3 py-1.5 rounded-full",
+    style: s.type === "drop" ? {
+      background: "rgba(255,159,10,0.18)",
+      color: C.orange
+    } : {
+      background: C.surface2,
+      color: C.textDim
+    }
+  }, "Serie ", idx + 1, s.type === "drop" ? " · drop" : "")))), sets.map((s, idx) => s.type === "drop" && /*#__PURE__*/React.createElement("div", {
     key: s.id,
     className: "rounded-xl p-3",
     style: {
       background: C.surface2
     }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between mb-2"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-xs font-medium",
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-xs font-medium mb-2",
     style: {
-      color: C.textDim
-    }
-  }, "Serie ", idx + 1), /*#__PURE__*/React.createElement("button", {
-    onClick: () => toggle(idx),
-    className: "text-xs font-medium px-3 py-1 rounded-full",
-    style: s.type === "drop" ? {
-      background: "rgba(255,159,10,0.18)",
       color: C.orange
-    } : {
-      background: C.surface,
-      color: C.textDim
     }
-  }, s.type === "drop" ? "Drop set" : "Normal")), s.type === "normal" ? /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-2"
-  }, /*#__PURE__*/React.createElement(NumField, {
-    label: "Reps",
-    value: s.reps,
-    onChange: v => updateSet(idx, {
-      reps: v
-    })
-  }), /*#__PURE__*/React.createElement(NumField, {
-    label: weightLabel,
-    value: s.weight,
-    step: 0.5,
-    onChange: v => updateSet(idx, {
-      weight: v
-    })
-  })) : /*#__PURE__*/React.createElement("div", {
+  }, "Serie ", idx + 1, " · bajadas del drop set"), /*#__PURE__*/React.createElement("div", {
     className: "space-y-2"
   }, s.drops.map((d, di) => /*#__PURE__*/React.createElement("div", {
     key: d.id,
@@ -1211,7 +1185,7 @@ function ExercisePlanEditor({
     style: {
       color: C.blue
     }
-  }, "+ Agregar bajada"))))));
+  }, "+ Agregar bajada")))));
 }
 
 // ---------------------------------------------------------------------------
