@@ -978,6 +978,7 @@ function RoutinesList({
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOffset, setDragOffset] = useState(0);
   const rowRefs = useRef([]);
+  const listRef = useRef(null);
   useEffect(() => {
     if (dragIndex === null) setOrder(routines);
   }, [routines, dragIndex]);
@@ -996,10 +997,18 @@ function RoutinesList({
     e.preventDefault();
     const startY = e.clientY;
     let current = index;
+    const startRect = rowRefs.current[index].getBoundingClientRect();
+    const listEl = listRef.current;
+    const listRect = listEl.getBoundingClientRect();
+    const minOffset = listRect.top - startRect.top;
+    const maxOffset = listRect.bottom - startRect.bottom;
+    let ended = false;
     setDragIndex(index);
     setDragOffset(0);
     function onMove(ev) {
-      setDragOffset(ev.clientY - startY);
+      const raw = ev.clientY - startY;
+      const clamped = Math.max(minOffset, Math.min(maxOffset, raw));
+      setDragOffset(clamped);
       for (let i = 0; i < rowRefs.current.length; i++) {
         if (i === current) continue;
         const el = rowRefs.current[i];
@@ -1019,9 +1028,12 @@ function RoutinesList({
         }
       }
     }
-    function onUp() {
+    function finish() {
+      if (ended) return;
+      ended = true;
       window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
       setDragIndex(null);
       setDragOffset(0);
       setOrder(finalOrder => {
@@ -1030,7 +1042,13 @@ function RoutinesList({
       });
     }
     window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  }
+  function stopEditing() {
+    setEditing(false);
+    setDragIndex(null);
+    setDragOffset(0);
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "px-4 pt-6 pb-4"
@@ -1042,7 +1060,7 @@ function RoutinesList({
       color: C.text
     }
   }, "Rutinas"), routines.length > 0 && /*#__PURE__*/React.createElement("button", {
-    onClick: () => setEditing(e => !e),
+    onClick: () => editing ? stopEditing() : setEditing(true),
     className: "text-sm font-medium",
     style: {
       color: C.blue
@@ -1069,7 +1087,13 @@ function RoutinesList({
       }
     }, "Crear rutina")
   }), /*#__PURE__*/React.createElement("div", {
-    className: "space-y-2.5"
+    className: "space-y-2.5",
+    ref: listRef,
+    style: {
+      position: "relative",
+      userSelect: dragIndex !== null ? "none" : "auto",
+      WebkitUserSelect: dragIndex !== null ? "none" : "auto"
+    }
   }, order.map((r, index) => {
     const last = lastSession(r.id);
     const isDragging = dragIndex === index;
@@ -1080,12 +1104,12 @@ function RoutinesList({
       },
       className: isDragging ? "flex items-center gap-3 rounded-2xl px-4 py-3.5" : "animate-in flex items-center gap-3 rounded-2xl px-4 py-3.5",
       style: {
-        background: C.surface,
+        background: isDragging ? C.surface2 : C.surface,
         border: `1px solid ${C.border}`,
-        transform: isDragging ? `translateY(${dragOffset}px) scale(1.02)` : "none",
-        position: isDragging ? "relative" : "static",
-        zIndex: isDragging ? 10 : "auto",
-        boxShadow: isDragging ? "0 8px 24px rgba(0,0,0,0.4)" : "none",
+        transform: isDragging ? `translateY(${dragOffset}px)` : "none",
+        position: "relative",
+        zIndex: isDragging ? 10 : 1,
+        boxShadow: isDragging ? "0 4px 16px rgba(0,0,0,0.35)" : "none",
         transition: isDragging ? "none" : "transform .15s ease"
       }
     }, confirmId === r.id ? /*#__PURE__*/React.createElement("div", {
@@ -1118,7 +1142,9 @@ function RoutinesList({
       style: {
         touchAction: "none",
         cursor: "grab",
-        color: C.textDim2
+        color: C.textDim2,
+        userSelect: "none",
+        WebkitUserSelect: "none"
       }
     }, /*#__PURE__*/React.createElement(Icon, {
       name: "grip",
