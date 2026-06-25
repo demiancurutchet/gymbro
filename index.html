@@ -574,9 +574,7 @@ function RoutinesList({
   onOpen,
   onCreate,
   onDelete,
-  onWipe,
-  userEmail,
-  onLogout
+  onWipe
 }) {
   const [editing, setEditing] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -614,7 +612,7 @@ function RoutinesList({
     style: {
       color: C.textDim
     }
-  }, routines.length, " ", routines.length === 1 ? "rutina" : "rutinas", " · ", userEmail), routines.length === 0 && !creating && /*#__PURE__*/React.createElement(EmptyState, {
+  }, routines.length, " ", routines.length === 1 ? "rutina" : "rutinas"), routines.length === 0 && !creating && /*#__PURE__*/React.createElement(EmptyState, {
     icon: /*#__PURE__*/React.createElement(Icon, {
       name: "dumbbell",
       size: 24,
@@ -735,13 +733,7 @@ function RoutinesList({
     size: 16
   }), " Nueva rutina"), /*#__PURE__*/React.createElement("div", {
     className: "mt-10 text-center space-y-3"
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: onLogout,
-    className: "text-xs font-medium",
-    style: {
-      color: C.blue
-    }
-  }, "Cerrar sesión"), /*#__PURE__*/React.createElement("div", null, confirmWipe ? /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("div", null, confirmWipe ? /*#__PURE__*/React.createElement("div", {
     className: "text-xs",
     style: {
       color: C.textDim
@@ -1433,9 +1425,7 @@ function LoadingScreen() {
 // Main app (once logged in) — talks to Firestore
 // ---------------------------------------------------------------------------
 function MainApp({
-  ownerUid,
-  userEmail,
-  onLogout
+  ownerUid
 }) {
   const [routines, setRoutines] = useState(null);
   const [logs, setLogs] = useState(null);
@@ -1569,8 +1559,6 @@ function MainApp({
   }, tab === "rutinas" && !rutinasView && /*#__PURE__*/React.createElement(RoutinesList, {
     routines: routines,
     logs: logs,
-    userEmail: userEmail,
-    onLogout: onLogout,
     onOpen: id => setRutinasView({
       type: "detail",
       id
@@ -1607,33 +1595,43 @@ function MainApp({
 }
 
 // ---------------------------------------------------------------------------
-// Root: handles Firebase auth state (incl. completing the email-link sign-in)
+// Root: silently signs the device in (no login screen). Firestore rules still
+// require an authenticated user, so we use anonymous auth in the background.
 // ---------------------------------------------------------------------------
 function Root() {
   const [user, setUser] = useState(undefined); // undefined = checking
-  const [linkError, setLinkError] = useState("");
+  const [authError, setAuthError] = useState("");
   useEffect(() => {
-    if (auth.isSignInWithEmailLink(window.location.href)) {
-      let storedEmail = window.localStorage.getItem("emailForSignIn");
-      if (!storedEmail) storedEmail = window.prompt("Confirmá tu email para completar el ingreso:");
-      if (storedEmail) {
-        auth.signInWithEmailLink(storedEmail, window.location.href).then(() => {
-          window.localStorage.removeItem("emailForSignIn");
-          window.history.replaceState({}, document.title, window.location.pathname);
-        }).catch(e => setLinkError(e.message));
+    const unsubscribe = auth.onAuthStateChanged(u => {
+      if (u) {
+        setUser(u);
+      } else {
+        auth.signInAnonymously().catch(e => setAuthError(e.message));
       }
-    }
-    const unsubscribe = auth.onAuthStateChanged(u => setUser(u));
+    });
     return unsubscribe;
   }, []);
-  if (user === undefined) return /*#__PURE__*/React.createElement(LoadingScreen, null);
-  if (!user) return /*#__PURE__*/React.createElement(LoginScreen, {
-    error: linkError
-  });
+  if (authError) {
+    return /*#__PURE__*/React.createElement("div", {
+      className: "flex flex-col items-center justify-center px-6 text-center",
+      style: {
+        minHeight: "100vh"
+      }
+    }, /*#__PURE__*/React.createElement("p", {
+      className: "text-sm",
+      style: {
+        color: C.red
+      }
+    }, "No se pudo iniciar: ", authError), /*#__PURE__*/React.createElement("p", {
+      className: "text-xs mt-2 max-w-xs",
+      style: {
+        color: C.textDim
+      }
+    }, "Activá el método \"Anonymous\" en Firebase → Authentication → Sign-in method."));
+  }
+  if (!user) return /*#__PURE__*/React.createElement(LoadingScreen, null);
   return /*#__PURE__*/React.createElement(MainApp, {
-    ownerUid: user.uid,
-    userEmail: user.email,
-    onLogout: () => auth.signOut()
+    ownerUid: user.uid
   });
 }
 ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(Root, null));
