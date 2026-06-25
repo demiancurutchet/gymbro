@@ -123,6 +123,15 @@ function todayISO() {
   const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 10);
 }
+const PERIOD_DAYS = {
+  week: 7,
+  month: 30,
+  year: 365
+};
+function withinPeriod(dateIso, period) {
+  const days = PERIOD_DAYS[period] || 30;
+  return (Date.now() - new Date(dateIso + "T00:00:00").getTime()) / 86400000 <= days;
+}
 function fmtShort(iso) {
   if (!iso) return "";
   return new Date(iso + "T00:00:00").toLocaleDateString("es-AR", {
@@ -214,10 +223,11 @@ function setTopWeight(s) {
   if (s.type === "drop") return Math.max(0, ...(s.drops || []).map(d => Number(d.weight) || 0));
   return Number(s.weight) || 0;
 }
-function setSummary(s) {
+function setSummary(s, bodyweight) {
   if (s.type === "drop") {
-    return `Drop set · ${s.drops.map(d => `${d.reps}×${d.weight}kg`).join(" → ")}`;
+    return `Drop set · ${s.drops.map(d => bodyweight && !d.weight ? `${d.reps} reps` : `${d.reps}×${d.weight}kg`).join(" → ")}`;
   }
+  if (bodyweight && !s.weight) return `${s.reps} reps (peso corporal)`;
   return `${s.reps} reps × ${s.weight} kg`;
 }
 function cloneSetForSession(s) {
@@ -238,6 +248,7 @@ function cloneExerciseForSession(ex) {
     id: uid(),
     exerciseId: ex.id,
     name: ex.name,
+    bodyweight: !!ex.bodyweight,
     sets: ex.sets.map(cloneSetForSession)
   };
 }
@@ -258,6 +269,7 @@ function historyForExercise(logs, routineId, exerciseName) {
         reps: repsOfSet(topSet),
         logId: l.id,
         sets: ex.sets,
+        bodyweight: !!ex.bodyweight,
         strength: l.strength,
         endurance: l.endurance,
         startedAt: l.startedAt,
@@ -644,7 +656,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.1.5";
+const APP_VERSION = "1.1.6";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -971,10 +983,13 @@ function DualLineChart({
 // ---------------------------------------------------------------------------
 function ExercisePlanEditor({
   sets,
-  onChange
+  onChange,
+  bodyweight,
+  onToggleBodyweight
 }) {
   const base = getBase(sets);
   const count = sets.length;
+  const weightLabel = bodyweight ? "Peso adicional (kg)" : "Peso (kg)";
   function changeCount(next) {
     onChange(resizeSets(sets, Math.max(1, Math.min(12, next)), base));
   }
@@ -1029,7 +1044,37 @@ function ExercisePlanEditor({
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "space-y-4"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, onToggleBodyweight && /*#__PURE__*/React.createElement("button", {
+    onClick: () => onToggleBodyweight(!bodyweight),
+    className: "flex items-center justify-between w-full rounded-xl px-3 py-2.5",
+    style: {
+      background: C.surface2
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-sm",
+    style: {
+      color: C.text
+    }
+  }, "Con tu propio peso (dominadas, fondos, etc.)"), /*#__PURE__*/React.createElement("span", {
+    className: "relative shrink-0",
+    style: {
+      width: 38,
+      height: 22,
+      borderRadius: 11,
+      background: bodyweight ? C.green : C.surface,
+      display: "inline-block"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "absolute rounded-full",
+    style: {
+      width: 18,
+      height: 18,
+      top: 2,
+      left: bodyweight ? 18 : 2,
+      background: "#fff",
+      transition: "left .15s ease"
+    }
+  }))), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between rounded-xl px-3 py-2.5",
     style: {
       background: C.surface2
@@ -1084,7 +1129,7 @@ function ExercisePlanEditor({
     value: base.reps,
     onChange: v => applyToAll(v, base.weight)
   }), /*#__PURE__*/React.createElement(NumField, {
-    label: "Peso (kg)",
+    label: weightLabel,
     value: base.weight,
     step: 0.5,
     onChange: v => applyToAll(base.reps, v)
@@ -1122,7 +1167,7 @@ function ExercisePlanEditor({
       reps: v
     })
   }), /*#__PURE__*/React.createElement(NumField, {
-    label: "Peso (kg)",
+    label: weightLabel,
     value: s.weight,
     step: 0.5,
     onChange: v => updateSet(idx, {
@@ -1473,7 +1518,9 @@ function RoutineDetail({
   onBack,
   onChange,
   onDelete,
-  onStartSession
+  onStartSession,
+  todaySession,
+  onEditTodaySession
 }) {
   const [editing, setEditing] = useState(false);
   const [confirmDeleteEx, setConfirmDeleteEx] = useState(null);
@@ -1481,6 +1528,7 @@ function RoutineDetail({
   const [addingExercise, setAddingExercise] = useState(false);
   const [newExName, setNewExName] = useState("");
   const [draftSets, setDraftSets] = useState(defaultDraftSets);
+  const [draftBodyweight, setDraftBodyweight] = useState(false);
   function updateName(n) {
     onChange({
       ...routine,
@@ -1506,6 +1554,7 @@ function RoutineDetail({
   function startAdding() {
     setNewExName("");
     setDraftSets(defaultDraftSets());
+    setDraftBodyweight(false);
     setAddingExercise(true);
   }
   function cancelAdding() {
@@ -1519,7 +1568,8 @@ function RoutineDetail({
       exercises: [...routine.exercises, {
         id: uid(),
         name: n,
-        sets: draftSets
+        sets: draftSets,
+        bodyweight: draftBodyweight
       }]
     });
     setAddingExercise(false);
@@ -1593,7 +1643,7 @@ function RoutineDetail({
     style: {
       color: C.text
     }
-  }, ex.name), editing && (confirmDeleteEx === ex.id ? /*#__PURE__*/React.createElement("div", {
+  }, ex.name, ex.bodyweight ? " 🤸" : ""), editing && (confirmDeleteEx === ex.id ? /*#__PURE__*/React.createElement("div", {
     className: "flex gap-2 ml-2"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => {
@@ -1622,6 +1672,11 @@ function RoutineDetail({
     onChange: sets => updateExercise(idx, {
       ...ex,
       sets
+    }),
+    bodyweight: ex.bodyweight,
+    onToggleBodyweight: v => updateExercise(idx, {
+      ...ex,
+      bodyweight: v
     })
   }) : /*#__PURE__*/React.createElement("div", {
     className: "space-y-1.5"
@@ -1636,7 +1691,7 @@ function RoutineDetail({
     style: {
       color: C.textDim2
     }
-  }, "Serie ", i + 1, " ·"), " ", setSummary(s))))))), addingExercise ? /*#__PURE__*/React.createElement("div", {
+  }, "Serie ", i + 1, " ·"), " ", setSummary(s, ex.bodyweight))))))), addingExercise ? /*#__PURE__*/React.createElement("div", {
     className: "mt-3 rounded-2xl p-4 space-y-4",
     style: {
       background: C.surface,
@@ -1654,7 +1709,9 @@ function RoutineDetail({
     }
   }), /*#__PURE__*/React.createElement(ExercisePlanEditor, {
     sets: draftSets,
-    onChange: setDraftSets
+    onChange: setDraftSets,
+    bodyweight: draftBodyweight,
+    onToggleBodyweight: setDraftBodyweight
   }), /*#__PURE__*/React.createElement("div", {
     className: "flex gap-3 pt-1"
   }, /*#__PURE__*/React.createElement("button", {
@@ -1681,14 +1738,21 @@ function RoutineDetail({
   }, /*#__PURE__*/React.createElement(Icon, {
     name: "plus",
     size: 16
-  }), " Agregar ejercicio"), !editing && routine.exercises.length > 0 && /*#__PURE__*/React.createElement("button", {
+  }), " Agregar ejercicio"), !editing && routine.exercises.length > 0 && (todaySession ? /*#__PURE__*/React.createElement("button", {
+    onClick: () => onEditTodaySession(todaySession.id),
+    className: "mt-6 w-full rounded-2xl py-3.5 text-base font-semibold",
+    style: {
+      background: C.blue,
+      color: "#fff"
+    }
+  }, "Ya entrenaste hoy (", todaySession.routineName, ") · Editar esa sesión") : /*#__PURE__*/React.createElement("button", {
     onClick: onStartSession,
     className: "mt-6 w-full rounded-2xl py-3.5 text-base font-semibold",
     style: {
       background: C.green,
       color: C.greenText
     }
-  }, "Iniciar sesión de hoy"), editing && /*#__PURE__*/React.createElement("div", {
+  }, "Iniciar sesión de hoy")), editing && /*#__PURE__*/React.createElement("div", {
     className: "mt-8 text-center"
   }, confirmDeleteRoutine ? /*#__PURE__*/React.createElement("div", {
     className: "text-sm",
@@ -1781,7 +1845,16 @@ function SessionScreen({
       className: "px-4 pt-5"
     }, /*#__PURE__*/React.createElement(ExercisePlanEditor, {
       sets: ex.sets,
-      onChange: sets => updateExSets(focusedIndex, sets)
+      onChange: sets => updateExSets(focusedIndex, sets),
+      bodyweight: ex.bodyweight,
+      onToggleBodyweight: v => {
+        const arr = exercises.slice();
+        arr[focusedIndex] = {
+          ...arr[focusedIndex],
+          bodyweight: v
+        };
+        setExercises(arr);
+      }
     }), /*#__PURE__*/React.createElement("button", {
       onClick: () => markDone(focusedIndex),
       className: "mt-6 w-full flex items-center justify-center gap-2 rounded-2xl py-3.5 text-base font-semibold",
@@ -2077,6 +2150,175 @@ function PostSessionWizard({
     }
   }, "Finalizar")));
 }
+function SessionEditScreen({
+  log,
+  onCancel,
+  onSave
+}) {
+  const [date, setDate] = useState(log.date);
+  const [exercises, setExercises] = useState(() => log.exercises.map(cloneExerciseForSession));
+  const [strength, setStrength] = useState(typeof log.strength === "number" ? log.strength : null);
+  const [endurance, setEndurance] = useState(typeof log.endurance === "number" ? log.endurance : null);
+  const [hardest, setHardest] = useState(log.hardestMuscle || null);
+  const [easiest, setEasiest] = useState(log.easiestMuscle || null);
+  const [pain, setPain] = useState(log.painAreas || []);
+  const [saving, setSaving] = useState(false);
+  function updateExSets(idx, sets) {
+    const arr = exercises.slice();
+    arr[idx] = {
+      ...arr[idx],
+      sets
+    };
+    setExercises(arr);
+  }
+  function toggleBodyweight(idx, v) {
+    const arr = exercises.slice();
+    arr[idx] = {
+      ...arr[idx],
+      bodyweight: v
+    };
+    setExercises(arr);
+  }
+  function togglePain(area) {
+    setPain(prev => prev.includes(area) ? prev.filter(a => a !== area) : [...prev, area]);
+  }
+  async function handleSave() {
+    setSaving(true);
+    await onSave(log.id, {
+      date,
+      exercises,
+      strength,
+      endurance,
+      hardestMuscle: hardest,
+      easiestMuscle: easiest,
+      painAreas: pain
+    });
+    setSaving(false);
+    onCancel();
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    className: "pb-10"
+  }, /*#__PURE__*/React.createElement(BackHeader, {
+    onBack: onCancel,
+    title: "Editar sesión",
+    right: null
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "px-4 pt-5 space-y-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between rounded-2xl px-4 py-3",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-sm font-medium",
+    style: {
+      color: C.text
+    }
+  }, log.routineName), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: date,
+    onChange: e => setDate(e.target.value),
+    className: "bg-transparent text-sm outline-none",
+    style: {
+      color: C.text,
+      colorScheme: "dark",
+      fontVariantNumeric: "tabular-nums"
+    }
+  })), exercises.map((ex, idx) => /*#__PURE__*/React.createElement("div", {
+    key: ex.id,
+    className: "rounded-2xl p-4",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "font-semibold mb-3",
+    style: {
+      color: C.text
+    }
+  }, ex.name), /*#__PURE__*/React.createElement(ExercisePlanEditor, {
+    sets: ex.sets,
+    onChange: sets => updateExSets(idx, sets),
+    bodyweight: ex.bodyweight,
+    onToggleBodyweight: v => toggleBodyweight(idx, v)
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-2xl p-4 space-y-4",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-semibold mb-3",
+    style: {
+      color: C.text
+    }
+  }, "Fuerza"), /*#__PURE__*/React.createElement(RadioRow, {
+    options: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    value: strength,
+    onChange: setStrength
+  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-semibold mb-3",
+    style: {
+      color: C.text
+    }
+  }, "Resistencia"), /*#__PURE__*/React.createElement(RadioRow, {
+    options: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    value: endurance,
+    onChange: setEndurance
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-2xl p-4 space-y-3",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-semibold",
+    style: {
+      color: C.text
+    }
+  }, "¿Qué te costó más?"), /*#__PURE__*/React.createElement(ChipPicker, {
+    options: MUSCLE_GROUPS,
+    selected: hardest,
+    onPick: setHardest,
+    multi: false
+  }), /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-semibold mt-2",
+    style: {
+      color: C.text
+    }
+  }, "¿Y lo que menos?"), /*#__PURE__*/React.createElement(ChipPicker, {
+    options: MUSCLE_GROUPS,
+    selected: easiest,
+    onPick: setEasiest,
+    multi: false
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "rounded-2xl p-4 space-y-3",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-semibold",
+    style: {
+      color: C.text
+    }
+  }, "¿Te duele algo?"), /*#__PURE__*/React.createElement(ChipPicker, {
+    options: PAIN_AREAS,
+    selected: pain,
+    onPick: togglePain,
+    multi: true
+  })), /*#__PURE__*/React.createElement("button", {
+    onClick: handleSave,
+    disabled: saving,
+    className: "w-full rounded-2xl py-3.5 text-base font-semibold",
+    style: {
+      background: C.green,
+      color: C.greenText,
+      opacity: saving ? 0.7 : 1
+    }
+  }, saving ? "Guardando..." : "Guardar cambios")));
+}
 
 // ---------------------------------------------------------------------------
 // Progress
@@ -2161,6 +2403,7 @@ function ProgressFlow({
 }) {
   const [view, setView] = useState("dashboard"); // dashboard | insights | detail
   const [period, setPeriod] = useState("month");
+  const [exercisePeriod, setExercisePeriod] = useState("month");
   const [routineId, setRoutineId] = useState(null);
   const [exerciseName, setExerciseName] = useState(null);
   const routine = routines.find(r => r.id === routineId);
@@ -2174,8 +2417,7 @@ function ProgressFlow({
   }
   if (view === "dashboard") {
     const sessions = ratedSessions(logs);
-    const days = period === "week" ? 7 : period === "year" ? 365 : 30;
-    const inPeriod = sessions.filter(s => (Date.now() - new Date(s.date + "T00:00:00").getTime()) / 86400000 <= days).sort((a, b) => a.date < b.date ? -1 : 1);
+    const inPeriod = sessions.filter(s => withinPeriod(s.date, period)).sort((a, b) => a.date < b.date ? -1 : 1);
     const avgStrength = inPeriod.length ? avg(inPeriod.map(s => s.strength)) : null;
     const avgEndurance = inPeriod.length ? avg(inPeriod.map(s => s.endurance)) : null;
     return /*#__PURE__*/React.createElement("div", {
@@ -2378,11 +2620,13 @@ function ProgressFlow({
       color: C.textDim2
     }))))));
   }
-  const points = historyForExercise(logs, routine.id, exerciseName);
+  const allPoints = historyForExercise(logs, routine.id, exerciseName);
+  const points = allPoints.filter(p => withinPeriod(p.date, exercisePeriod));
   const last = points[points.length - 1];
   const prev = points[points.length - 2];
   const weightDelta = last && prev ? Math.round((last.weight - prev.weight) * 100) / 100 : null;
   const repsDelta = last && prev ? last.reps - prev.reps : null;
+  const ratedPoints = points.filter(p => typeof p.strength === "number" && typeof p.endurance === "number");
   return /*#__PURE__*/React.createElement("div", {
     className: "pb-10"
   }, /*#__PURE__*/React.createElement(BackHeader, {
@@ -2390,7 +2634,22 @@ function ProgressFlow({
     title: exerciseName
   }), /*#__PURE__*/React.createElement("div", {
     className: "px-4 pt-5"
-  }, points.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex rounded-full p-0.5 mb-5",
+    style: {
+      background: C.surface2
+    }
+  }, [["week", "Semana"], ["month", "Mes"], ["year", "Año"]].map(([k, l]) => /*#__PURE__*/React.createElement("button", {
+    key: k,
+    onClick: () => setExercisePeriod(k),
+    className: "flex-1 text-xs font-semibold py-2 rounded-full",
+    style: exercisePeriod === k ? {
+      background: C.green,
+      color: C.greenText
+    } : {
+      color: C.textDim
+    }
+  }, l))), allPoints.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
     icon: /*#__PURE__*/React.createElement(Icon, {
       name: "trendingUp",
       size: 22,
@@ -2398,6 +2657,14 @@ function ProgressFlow({
     }),
     title: "Sin registros todavía",
     subtitle: "Registrá una sesión de esta rutina para empezar a ver tu evolución."
+  }) : points.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
+    icon: /*#__PURE__*/React.createElement(Icon, {
+      name: "trendingUp",
+      size: 22,
+      color: C.green
+    }),
+    title: "Sin registros en este período",
+    subtitle: "Probá con un rango más amplio (Mes o Año)."
   }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "flex gap-3 mb-5"
   }, /*#__PURE__*/React.createElement("div", {
@@ -2480,6 +2747,19 @@ function ProgressFlow({
     points: points,
     metric: "reps",
     color: C.blue
+  })), ratedPoints.length >= 2 && /*#__PURE__*/React.createElement("div", {
+    className: "rounded-2xl p-3",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-xs font-medium mb-1 px-1",
+    style: {
+      color: C.textDim
+    }
+  }, "Fuerza y resistencia declaradas"), /*#__PURE__*/React.createElement(DualLineChart, {
+    points: ratedPoints
   }))), /*#__PURE__*/React.createElement("p", {
     className: "text-xs font-medium mb-2",
     style: {
@@ -2516,7 +2796,7 @@ function ProgressFlow({
       color: C.textDim,
       fontVariantNumeric: "tabular-nums"
     }
-  }, "Serie ", i + 1, " · ", setSummary(s)))), typeof p.strength === "number" && /*#__PURE__*/React.createElement("p", {
+  }, "Serie ", i + 1, " · ", setSummary(s, p.bodyweight)))), typeof p.strength === "number" && /*#__PURE__*/React.createElement("p", {
     className: "text-xs mt-1.5",
     style: {
       color: C.textDim2,
@@ -3427,7 +3707,8 @@ function MainApp() {
     }
   }
   const loading = routines === null || logs === null || nutrition === null || hiddenFoods === null || goals === null || customFoods === null;
-  const inSession = tab === "rutinas" && rutinasView?.type === "session";
+  const inSession = tab === "rutinas" && (rutinasView?.type === "session" || rutinasView?.type === "editSession");
+  const todaySession = !loading ? logs.find(l => l.date === todayISO()) || null : null;
   return /*#__PURE__*/React.createElement("div", {
     className: "min-h-screen w-full",
     style: {
@@ -3472,6 +3753,11 @@ function MainApp() {
     onStartSession: () => setRutinasView({
       type: "session",
       id: rutinasView.id
+    }),
+    todaySession: todaySession,
+    onEditTodaySession: sessionId => setRutinasView({
+      type: "editSession",
+      sessionId
     })
   }), tab === "rutinas" && rutinasView?.type === "session" && /*#__PURE__*/React.createElement(SessionScreen, {
     routine: routines.find(r => r.id === rutinasView.id),
@@ -3485,6 +3771,10 @@ function MainApp() {
       type: "detail",
       id: rutinasView.id
     })
+  }), tab === "rutinas" && rutinasView?.type === "editSession" && /*#__PURE__*/React.createElement(SessionEditScreen, {
+    log: logs.find(l => l.id === rutinasView.sessionId),
+    onCancel: () => setRutinasView(null),
+    onSave: finalizeSessionExtras
   }), tab === "progreso" && /*#__PURE__*/React.createElement(ProgressFlow, {
     routines: routines,
     logs: logs,
