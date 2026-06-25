@@ -247,7 +247,9 @@ function historyForExercise(logs, routineId, exerciseName) {
         logId: l.id,
         sets: ex.sets,
         strength: l.strength,
-        endurance: l.endurance
+        endurance: l.endurance,
+        startedAt: l.startedAt,
+        endedAt: l.endedAt
       });
     }
   });
@@ -360,13 +362,13 @@ function routineInsight(sessions) {
     good: true
   };
 }
-function proteinGoalInsight(sessions, nutrition) {
+function proteinGoalInsight(sessions, nutrition, proteinGoal) {
   const proteinByDate = {};
   nutrition.forEach(e => {
     proteinByDate[e.date] = (proteinByDate[e.date] || 0) + (Number(e.protein) || 0);
   });
-  const reached = sessions.filter(s => (proteinByDate[s.date] || 0) >= PROTEIN_GOAL);
-  const notReached = sessions.filter(s => (proteinByDate[s.date] || 0) < PROTEIN_GOAL);
+  const reached = sessions.filter(s => (proteinByDate[s.date] || 0) >= proteinGoal);
+  const notReached = sessions.filter(s => (proteinByDate[s.date] || 0) < proteinGoal);
   if (reached.length < 2 || notReached.length < 2) return null;
   const sR = avg(reached.map(s => s.strength)),
     eR = avg(reached.map(s => s.endurance));
@@ -375,9 +377,29 @@ function proteinGoalInsight(sessions, nutrition) {
   const diff = sR + eR - (sN + eN);
   if (Math.abs(diff) < 1.2) return null;
   return {
-    title: `Llegar a los ${PROTEIN_GOAL}g de proteína parece importar`,
+    title: `Llegar a los ${proteinGoal}g de proteína parece importar`,
     desc: `Los días que llegaste a la meta: fuerza ${fmt1(sR)} / resistencia ${fmt1(eR)}. Los días que no: ${fmt1(sN)} / ${fmt1(eN)}.`,
     n: reached.length,
+    good: diff > 0
+  };
+}
+function carbsBeforeTrainingInsight(sessions, nutrition, threshold = 100) {
+  const withFoodLogged = sessions.filter(s => s.startedAt && nutrition.some(n => n.date === s.date));
+  if (withFoodLogged.length < 4) return null;
+  function carbsBefore(s) {
+    return nutrition.filter(n => n.date === s.date && n.loggedAt && new Date(n.loggedAt) < new Date(s.startedAt)).reduce((sum, n) => sum + (Number(n.carbs) || 0), 0);
+  }
+  const high = withFoodLogged.filter(s => carbsBefore(s) >= threshold);
+  const low = withFoodLogged.filter(s => carbsBefore(s) < threshold);
+  if (high.length < 2 || low.length < 2) return null;
+  const sHigh = avg(high.map(s => s.strength));
+  const sLow = avg(low.map(s => s.strength));
+  const diff = sHigh - sLow;
+  if (Math.abs(diff) < 1.2) return null;
+  return {
+    title: diff > 0 ? `Comer ${threshold}g+ de carbos antes de entrenar te ayuda` : `Muchos carbos antes de entrenar no parecen ayudarte`,
+    desc: `Los días que comiste ${threshold}g o más de carbohidratos antes de la sesión, tu fuerza promedió ${fmt1(sHigh)}/10. Cuando comiste menos, ${fmt1(sLow)}/10.`,
+    n: high.length,
     good: diff > 0
   };
 }
@@ -414,73 +436,209 @@ function foodInsights(sessions, nutrition) {
     good: r.diff > 0
   }));
 }
-function buildInsights(logs, nutrition) {
+function sessionDurationMin(s) {
+  if (!s.startedAt || !s.endedAt) return null;
+  const mins = (new Date(s.endedAt) - new Date(s.startedAt)) / 60000;
+  return mins > 0 && mins < 6 * 60 ? mins : null; // sanity bounds, ignore obvious data glitches
+}
+function hourOfDayInsight(sessions) {
+  const timed = sessions.filter(s => s.startedAt);
+  if (timed.length < 6) return null;
+  const byHour = {};
+  timed.forEach(s => {
+    const h = new Date(s.startedAt).getHours();
+    (byHour[h] = byHour[h] || []).push(s);
+  });
+  const overallS = avg(timed.map(s => s.strength));
+  const overallE = avg(timed.map(s => s.endurance));
+  let best = null;
+  Object.entries(byHour).forEach(([h, list]) => {
+    if (list.length < 2) return;
+    const s = avg(list.map(x => x.strength));
+    const e = avg(list.map(x => x.endurance));
+    const diff = s - overallS + (e - overallE);
+    if (Math.abs(diff) >= 1.5 && (!best || Math.abs(diff) > Math.abs(best.diff))) best = {
+      hour: Number(h),
+      s,
+      e,
+      n: list.length,
+      diff
+    };
+  });
+  if (!best) return null;
+  const range = `${String(best.hour).padStart(2, "0")}:00–${String(best.hour).padStart(2, "0")}:59`;
+  return {
+    title: `Entrenar entre las ${range} parece ${best.diff > 0 ? "ayudarte" : "no ayudarte"}`,
+    desc: `Fuerza ${fmt1(best.s)} / resistencia ${fmt1(best.e)} en ese horario, contra ${fmt1(overallS)} / ${fmt1(overallE)} en general.`,
+    n: best.n,
+    good: best.diff > 0
+  };
+}
+function durationInsight(sessions) {
+  const withDuration = sessions.map(s => ({
+    ...s,
+    _min: sessionDurationMin(s)
+  })).filter(s => s._min !== null);
+  if (withDuration.length < 6) return null;
+  const sorted = withDuration.slice().sort((a, b) => a._min - b._min);
+  const median = sorted[Math.floor(sorted.length / 2)]._min;
+  const longer = withDuration.filter(s => s._min > median);
+  const shorter = withDuration.filter(s => s._min <= median);
+  if (longer.length < 2 || shorter.length < 2) return null;
+  const sL = avg(longer.map(s => s.strength)),
+    eL = avg(longer.map(s => s.endurance));
+  const sS = avg(shorter.map(s => s.strength)),
+    eS = avg(shorter.map(s => s.endurance));
+  const diff = eL - eS + (sL - sS);
+  if (Math.abs(diff) < 1.2) return null;
+  return {
+    title: `Las sesiones más largas (+${Math.round(median)} min) ${diff > 0 ? "te rinden mejor" : "te cuestan más"}`,
+    desc: `Fuerza ${fmt1(sL)} / resistencia ${fmt1(eL)} en sesiones largas, contra ${fmt1(sS)} / ${fmt1(eS)} en las más cortas.`,
+    n: withDuration.length,
+    good: diff > 0
+  };
+}
+function streakInsight(sessions) {
+  const byDate = {};
+  sessions.forEach(s => {
+    byDate[s.date] = s;
+  });
+  const allDates = new Set(sessions.map(s => s.date));
+  const streakDay3Plus = [];
+  const freshDay = [];
+  allDates.forEach(d => {
+    const day = new Date(d + "T00:00:00");
+    const y1 = new Date(day);
+    y1.setDate(day.getDate() - 1);
+    const y2 = new Date(day);
+    y2.setDate(day.getDate() - 2);
+    const y1iso = y1.toISOString().slice(0, 10),
+      y2iso = y2.toISOString().slice(0, 10);
+    if (allDates.has(y1iso) && allDates.has(y2iso)) streakDay3Plus.push(byDate[d]);else if (!allDates.has(y1iso)) freshDay.push(byDate[d]);
+  });
+  if (streakDay3Plus.length < 2 || freshDay.length < 2) return null;
+  const sStreak = avg(streakDay3Plus.map(s => s.strength)),
+    eStreak = avg(streakDay3Plus.map(s => s.endurance));
+  const sFresh = avg(freshDay.map(s => s.strength)),
+    eFresh = avg(freshDay.map(s => s.endurance));
+  const diff = sStreak + eStreak - (sFresh + eFresh);
+  if (diff > -1.2) return null;
+  return {
+    title: "Al 3er día seguido entrenando, bajás",
+    desc: `Cuando entrenás 3 días seguidos o más, ese día rendís fuerza ${fmt1(sStreak)} / resistencia ${fmt1(eStreak)}, contra ${fmt1(sFresh)} / ${fmt1(eFresh)} cuando arrancás fresco (con descanso el día anterior).`,
+    n: streakDay3Plus.length,
+    good: false
+  };
+}
+function buildInsights(logs, nutrition, proteinGoal) {
   const sessions = ratedSessions(logs);
   if (sessions.length < 4) return {
     sessions,
     list: []
   };
-  const list = [...weekdayInsights(sessions), restGapInsight(sessions), trendInsight(sessions), routineInsight(sessions), proteinGoalInsight(sessions, nutrition), ...foodInsights(sessions, nutrition)].filter(Boolean);
+  const list = [...weekdayInsights(sessions), restGapInsight(sessions), trendInsight(sessions), routineInsight(sessions), proteinGoalInsight(sessions, nutrition, proteinGoal), ...foodInsights(sessions, nutrition), hourOfDayInsight(sessions), durationInsight(sessions), streakInsight(sessions), carbsBeforeTrainingInsight(sessions, nutrition)].filter(Boolean);
   return {
     sessions,
     list
   };
 }
-const PROTEIN_GOAL = 120;
+const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
-  protein: 12
+  protein: 12,
+  carbs: 1
 }, {
   name: "Pechuga de pollo (150g)",
-  protein: 35
+  protein: 35,
+  carbs: 0
 }, {
   name: "Milanesa de pollo",
-  protein: 30
+  protein: 30,
+  carbs: 15
 }, {
   name: "Carne vacuna (150g)",
-  protein: 35
+  protein: 35,
+  carbs: 0
 }, {
   name: "Hamburguesa de carne",
-  protein: 30
+  protein: 30,
+  carbs: 1
 }, {
   name: "Salmón (200g)",
-  protein: 40
+  protein: 40,
+  carbs: 0
 }, {
   name: "Lata de atún",
-  protein: 26
+  protein: 26,
+  carbs: 0
 }, {
   name: "Yogur griego",
-  protein: 10
+  protein: 10,
+  carbs: 6
 }, {
   name: "Vaso de leche",
-  protein: 7
+  protein: 7,
+  carbs: 12
 }, {
   name: "Scoop de proteína (whey)",
-  protein: 24
+  protein: 24,
+  carbs: 3
 }, {
   name: "Queso fresco/cottage (100g)",
-  protein: 14
+  protein: 14,
+  carbs: 4
 }, {
   name: "2 fetas de jamón cocido",
-  protein: 8
+  protein: 8,
+  carbs: 1
 }, {
   name: "Lentejas (1 taza cocida)",
-  protein: 18
+  protein: 18,
+  carbs: 40
 }, {
   name: "Garbanzos (1 taza cocida)",
-  protein: 15
+  protein: 15,
+  carbs: 45
 }, {
   name: "Tofu (100g)",
-  protein: 15
+  protein: 15,
+  carbs: 2
 }, {
   name: "Barrita proteica",
-  protein: 20
+  protein: 20,
+  carbs: 20
 }, {
   name: "Puñado de almendras",
-  protein: 6
+  protein: 6,
+  carbs: 6
 }, {
   name: "Manteca de maní (2 cdas)",
-  protein: 8
+  protein: 8,
+  carbs: 6
+}, {
+  name: "Arroz blanco (1 taza cocida)",
+  protein: 4,
+  carbs: 45
+}, {
+  name: "Pan (2 rebanadas)",
+  protein: 5,
+  carbs: 25
+}, {
+  name: "Avena (1/2 taza)",
+  protein: 6,
+  carbs: 30
+}, {
+  name: "Banana",
+  protein: 1,
+  carbs: 27
+}, {
+  name: "Batata (200g cocida)",
+  protein: 2,
+  carbs: 40
+}, {
+  name: "Pasta (1 plato cocido)",
+  protein: 8,
+  carbs: 50
 }];
 function NumField({
   label,
@@ -1253,6 +1411,7 @@ function SessionScreen({
   const [exercises, setExercises] = useState(() => routine.exercises.map(cloneExerciseForSession));
   const [strength, setStrength] = useState(5);
   const [endurance, setEndurance] = useState(5);
+  const [startedAt] = useState(() => new Date().toISOString());
   function updateExSets(idx, sets) {
     const arr = exercises.slice();
     arr[idx] = {
@@ -1268,7 +1427,9 @@ function SessionScreen({
       date,
       exercises,
       strength,
-      endurance
+      endurance,
+      startedAt,
+      endedAt: new Date().toISOString()
     });
   }
   return /*#__PURE__*/React.createElement("div", {
@@ -1286,7 +1447,7 @@ function SessionScreen({
   }), /*#__PURE__*/React.createElement("div", {
     className: "px-4 pt-5"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between mb-5 rounded-2xl px-4 py-3",
+    className: "flex items-center justify-between mb-2 rounded-2xl px-4 py-3",
     style: {
       background: C.surface,
       border: `1px solid ${C.border}`
@@ -1306,7 +1467,15 @@ function SessionScreen({
       colorScheme: "dark",
       fontVariantNumeric: "tabular-nums"
     }
-  })), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs mb-5",
+    style: {
+      color: C.textDim2
+    }
+  }, "Empezaste a las ", new Date(startedAt).toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit"
+  }), "hs — la duración se calcula sola al guardar."), /*#__PURE__*/React.createElement("div", {
     className: "space-y-3"
   }, exercises.map((ex, idx) => /*#__PURE__*/React.createElement("div", {
     key: ex.id,
@@ -1389,12 +1558,13 @@ function RatingSlider({
 function InsightsScreen({
   logs,
   nutrition,
+  proteinGoal,
   onBack
 }) {
   const {
     sessions,
     list
-  } = buildInsights(logs, nutrition);
+  } = buildInsights(logs, nutrition, proteinGoal);
   return /*#__PURE__*/React.createElement("div", {
     className: "pb-10"
   }, /*#__PURE__*/React.createElement(BackHeader, {
@@ -1460,7 +1630,8 @@ function InsightsScreen({
 function ProgressFlow({
   routines,
   logs,
-  nutrition
+  nutrition,
+  goals
 }) {
   const [routineId, setRoutineId] = useState(null);
   const [exerciseName, setExerciseName] = useState(null);
@@ -1470,6 +1641,7 @@ function ProgressFlow({
     return /*#__PURE__*/React.createElement(InsightsScreen, {
       logs: logs,
       nutrition: nutrition,
+      proteinGoal: goals.proteinGoal,
       onBack: () => setShowInsights(false)
     });
   }
@@ -1664,7 +1836,10 @@ function ProgressFlow({
       color: C.textDim2,
       fontVariantNumeric: "tabular-nums"
     }
-  }, "Fuerza ", p.strength, "/10 · Resistencia ", p.endurance, "/10")))))));
+  }, "Fuerza ", p.strength, "/10 · Resistencia ", p.endurance, "/10", sessionDurationMin(p) !== null && ` · ${Math.round(sessionDurationMin(p))} min`, p.startedAt && ` · ${new Date(p.startedAt).toLocaleTimeString("es-AR", {
+    hour: "2-digit",
+    minute: "2-digit"
+  })}hs`)))))));
 }
 
 // ---------------------------------------------------------------------------
@@ -1673,35 +1848,47 @@ function ProgressFlow({
 function NutritionScreen({
   entries,
   hiddenFoods,
+  goals,
   onAdd,
   onRemoveOne,
   onHideFood,
   onRemoveEntry,
-  onUpdateEntry
+  onUpdateEntry,
+  onUpdateGoals
 }) {
   const [adding, setAdding] = useState(false);
   const [customName, setCustomName] = useState("");
   const [customProtein, setCustomProtein] = useState(10);
+  const [customCarbs, setCustomCarbs] = useState(0);
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
   const [editProtein, setEditProtein] = useState(0);
+  const [editCarbs, setEditCarbs] = useState(0);
+  const [editingGoals, setEditingGoals] = useState(false);
+  const [goalProteinInput, setGoalProteinInput] = useState(goals.proteinGoal);
+  const [goalCarbsInput, setGoalCarbsInput] = useState(goals.carbsGoal || "");
   const today = todayISO();
   const todayEntries = entries.filter(e => e.date === today);
-  const total = todayEntries.reduce((sum, e) => sum + (Number(e.protein) || 0), 0);
-  const pct = Math.min(100, Math.round(total / PROTEIN_GOAL * 100));
-  const reached = total >= PROTEIN_GOAL;
+  const totalProtein = todayEntries.reduce((sum, e) => sum + (Number(e.protein) || 0), 0);
+  const totalCarbs = todayEntries.reduce((sum, e) => sum + (Number(e.carbs) || 0), 0);
+  const pct = Math.min(100, Math.round(totalProtein / goals.proteinGoal * 100));
+  const reached = totalProtein >= goals.proteinGoal;
+  const carbsPct = goals.carbsGoal ? Math.min(100, Math.round(totalCarbs / goals.carbsGoal * 100)) : null;
+  const carbsReached = goals.carbsGoal ? totalCarbs >= goals.carbsGoal : false;
   function startEdit(e) {
     setEditingId(e.id);
     setEditName(e.name);
     setEditProtein(e.protein);
+    setEditCarbs(e.carbs || 0);
   }
   function saveEdit() {
     const n = editName.trim();
     if (!n || editProtein === "") return;
     onUpdateEntry(editingId, {
       name: n,
-      protein: Number(editProtein)
+      protein: Number(editProtein),
+      carbs: Number(editCarbs) || 0
     });
     setEditingId(null);
   }
@@ -1713,24 +1900,83 @@ function NutritionScreen({
   function addCustom() {
     const n = customName.trim();
     if (!n || !customProtein) return;
-    onAdd(n, Number(customProtein));
+    onAdd(n, Number(customProtein), Number(customCarbs) || 0);
     setCustomName("");
     setCustomProtein(10);
+    setCustomCarbs(0);
     setAdding(false);
+  }
+  function saveGoals() {
+    const p = Number(goalProteinInput) || DEFAULT_PROTEIN_GOAL;
+    const c = goalCarbsInput === "" ? null : Number(goalCarbsInput) || null;
+    onUpdateGoals({
+      proteinGoal: p,
+      carbsGoal: c
+    });
+    setEditingGoals(false);
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "px-4 pt-6 pb-10"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-end justify-between mb-1"
   }, /*#__PURE__*/React.createElement("h1", {
-    className: "text-3xl font-bold tracking-tight mb-1",
+    className: "text-3xl font-bold tracking-tight",
     style: {
       color: C.text
     }
-  }, "Proteína"), /*#__PURE__*/React.createElement("p", {
+  }, "Alimentación"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setGoalProteinInput(goals.proteinGoal);
+      setGoalCarbsInput(goals.carbsGoal || "");
+      setEditingGoals(v => !v);
+    },
+    className: "text-sm font-medium",
+    style: {
+      color: C.blue
+    }
+  }, editingGoals ? "Listo" : "Metas")), /*#__PURE__*/React.createElement("p", {
     className: "text-sm mb-5",
     style: {
       color: C.textDim
     }
-  }, "Meta diaria: ", PROTEIN_GOAL, " g"), /*#__PURE__*/React.createElement("div", {
+  }, "Meta de proteína: ", goals.proteinGoal, " g", goals.carbsGoal ? ` · Meta de carbos: ${goals.carbsGoal} g` : ""), editingGoals && /*#__PURE__*/React.createElement("div", {
+    className: "rounded-2xl p-4 mb-5 space-y-3",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement(NumField, {
+    label: "Meta de proteína (g)",
+    value: goalProteinInput,
+    onChange: setGoalProteinInput
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex-1 flex flex-col gap-1"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-xs",
+    style: {
+      color: C.textDim2
+    }
+  }, "Meta de carbohidratos (g) — opcional"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    inputMode: "decimal",
+    value: goalCarbsInput,
+    onChange: e => setGoalCarbsInput(e.target.value),
+    placeholder: "Sin meta",
+    className: "w-full rounded-xl px-3 py-2 text-sm outline-none",
+    style: {
+      background: C.surface2,
+      color: C.text,
+      border: `1px solid ${C.border}`,
+      fontVariantNumeric: "tabular-nums"
+    }
+  })), /*#__PURE__*/React.createElement("button", {
+    onClick: saveGoals,
+    className: "w-full rounded-xl py-2.5 text-sm font-semibold",
+    style: {
+      background: C.green,
+      color: C.greenText
+    }
+  }, "Guardar metas")), /*#__PURE__*/React.createElement("div", {
     className: "rounded-2xl p-4 mb-5",
     style: {
       background: C.surface,
@@ -1746,12 +1992,12 @@ function NutritionScreen({
       color: C.text,
       fontVariantNumeric: "tabular-nums"
     }
-  }, total), /*#__PURE__*/React.createElement("span", {
+  }, totalProtein), /*#__PURE__*/React.createElement("span", {
     className: "text-sm",
     style: {
       color: C.textDim
     }
-  }, "/ ", PROTEIN_GOAL, " g")), reached && /*#__PURE__*/React.createElement("div", {
+  }, "/ ", goals.proteinGoal, " g proteína")), reached && /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold",
     style: {
       background: "rgba(48,209,88,0.15)",
@@ -1760,7 +2006,7 @@ function NutritionScreen({
   }, /*#__PURE__*/React.createElement(Icon, {
     name: "check",
     size: 12
-  }), " Meta cumplida")), /*#__PURE__*/React.createElement("div", {
+  }), " Cumplida")), /*#__PURE__*/React.createElement("div", {
     className: "w-full h-2.5 rounded-full overflow-hidden",
     style: {
       background: C.surface2
@@ -1777,7 +2023,54 @@ function NutritionScreen({
     style: {
       color: C.textDim
     }
-  }, "Te faltan ", PROTEIN_GOAL - total, " g")), /*#__PURE__*/React.createElement("input", {
+  }, "Te faltan ", goals.proteinGoal - totalProtein, " g de proteína"), /*#__PURE__*/React.createElement("div", {
+    className: "mt-4 pt-4",
+    style: {
+      borderTop: `1px solid ${C.border}`
+    }
+  }, goals.carbsGoal ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between mb-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-baseline gap-1.5"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-lg font-semibold",
+    style: {
+      color: C.text,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, totalCarbs), /*#__PURE__*/React.createElement("span", {
+    className: "text-xs",
+    style: {
+      color: C.textDim
+    }
+  }, "/ ", goals.carbsGoal, " g carbohidratos")), carbsReached && /*#__PURE__*/React.createElement(Icon, {
+    name: "check",
+    size: 14,
+    color: C.blue
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "w-full h-2 rounded-full overflow-hidden",
+    style: {
+      background: C.surface2
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "h-full rounded-full",
+    style: {
+      width: `${carbsPct}%`,
+      background: C.blue,
+      transition: "width .3s ease"
+    }
+  }))) : /*#__PURE__*/React.createElement("p", {
+    className: "text-sm",
+    style: {
+      color: C.textDim
+    }
+  }, "Carbohidratos hoy: ", /*#__PURE__*/React.createElement("span", {
+    className: "font-semibold",
+    style: {
+      color: C.text,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, totalCarbs, " g")))), /*#__PURE__*/React.createElement("input", {
     value: query,
     onChange: e => setQuery(e.target.value),
     placeholder: "Buscar alimento...",
@@ -1813,10 +2106,21 @@ function NutritionScreen({
     }, f.name), /*#__PURE__*/React.createElement("p", {
       className: "text-xs mt-0.5",
       style: {
-        color: C.green,
         fontVariantNumeric: "tabular-nums"
       }
-    }, f.protein, " g proteína")), /*#__PURE__*/React.createElement("button", {
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: C.green
+      }
+    }, f.protein, " g proteína"), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: C.textDim2
+      }
+    }, " · "), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: C.blue
+      }
+    }, f.carbs, " g carbos"))), /*#__PURE__*/React.createElement("button", {
       onClick: () => onRemoveOne(f.name),
       className: "w-7 h-7 shrink-0 rounded-full flex items-center justify-center",
       style: {
@@ -1833,7 +2137,7 @@ function NutritionScreen({
         fontVariantNumeric: "tabular-nums"
       }
     }, count), /*#__PURE__*/React.createElement("button", {
-      onClick: () => onAdd(f.name, f.protein),
+      onClick: () => onAdd(f.name, f.protein, f.carbs),
       className: "w-7 h-7 shrink-0 rounded-full flex items-center justify-center",
       style: {
         background: C.green,
@@ -1851,7 +2155,7 @@ function NutritionScreen({
       color: C.red
     })));
   })), adding ? /*#__PURE__*/React.createElement("div", {
-    className: "rounded-2xl p-3 mb-5 flex items-center gap-2",
+    className: "rounded-2xl p-3 mb-5 space-y-2",
     style: {
       background: C.surface,
       border: `1px solid ${C.border}`
@@ -1861,38 +2165,38 @@ function NutritionScreen({
     value: customName,
     onChange: e => setCustomName(e.target.value),
     placeholder: "Nombre del alimento",
-    className: "flex-1 bg-transparent outline-none text-sm",
+    className: "w-full bg-transparent outline-none text-sm pb-2",
     style: {
-      color: C.text
-    }
-  }), /*#__PURE__*/React.createElement("input", {
-    type: "number",
-    value: customProtein,
-    onChange: e => setCustomProtein(e.target.value),
-    className: "w-16 rounded-lg px-2 py-1 text-sm outline-none text-center",
-    style: {
-      background: C.surface2,
       color: C.text,
-      fontVariantNumeric: "tabular-nums"
+      borderBottom: `1px solid ${C.border}`
     }
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "text-xs",
-    style: {
-      color: C.textDim
-    }
-  }, "g"), /*#__PURE__*/React.createElement("button", {
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement(NumField, {
+    label: "Proteína (g)",
+    value: customProtein,
+    onChange: setCustomProtein
+  }), /*#__PURE__*/React.createElement(NumField, {
+    label: "Carbos (g)",
+    value: customCarbs,
+    onChange: setCustomCarbs
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-3 pt-1"
+  }, /*#__PURE__*/React.createElement("button", {
     onClick: addCustom,
-    className: "text-sm font-semibold",
+    className: "flex-1 rounded-xl py-2 text-sm font-semibold",
     style: {
-      color: C.green
+      background: C.green,
+      color: C.greenText
     }
   }, "Agregar"), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setAdding(false)
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "x",
-    size: 16,
-    color: C.textDim
-  }))) : /*#__PURE__*/React.createElement("button", {
+    onClick: () => setAdding(false),
+    className: "px-4 rounded-xl py-2 text-sm font-medium",
+    style: {
+      color: C.textDim,
+      border: `1px solid ${C.border}`
+    }
+  }, "Cancelar"))) : /*#__PURE__*/React.createElement("button", {
     onClick: () => setAdding(true),
     className: "mb-5 w-full flex items-center justify-center gap-1.5 rounded-2xl py-3 text-sm font-semibold",
     style: {
@@ -1918,7 +2222,7 @@ function NutritionScreen({
     className: "space-y-2"
   }, todayEntries.map(e => editingId === e.id ? /*#__PURE__*/React.createElement("div", {
     key: e.id,
-    className: "flex items-center gap-2 rounded-xl px-3 py-2",
+    className: "rounded-xl px-3 py-2 space-y-2",
     style: {
       background: C.surface,
       border: `1px solid ${C.border}`
@@ -1927,38 +2231,35 @@ function NutritionScreen({
     autoFocus: true,
     value: editName,
     onChange: ev => setEditName(ev.target.value),
-    className: "flex-1 bg-transparent outline-none text-sm",
+    className: "w-full bg-transparent outline-none text-sm",
     style: {
       color: C.text
     }
-  }), /*#__PURE__*/React.createElement("input", {
-    type: "number",
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2"
+  }, /*#__PURE__*/React.createElement(NumField, {
+    label: "Proteína (g)",
     value: editProtein,
-    onChange: ev => setEditProtein(ev.target.value === "" ? "" : Number(ev.target.value)),
-    className: "w-14 rounded-lg px-2 py-1 text-sm outline-none text-center",
-    style: {
-      background: C.surface2,
-      color: C.text,
-      fontVariantNumeric: "tabular-nums"
-    }
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "text-xs",
-    style: {
-      color: C.textDim
-    }
-  }, "g"), /*#__PURE__*/React.createElement("button", {
+    onChange: setEditProtein
+  }), /*#__PURE__*/React.createElement(NumField, {
+    label: "Carbos (g)",
+    value: editCarbs,
+    onChange: setEditCarbs
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-2 self-end pb-0.5"
+  }, /*#__PURE__*/React.createElement("button", {
     onClick: saveEdit
   }, /*#__PURE__*/React.createElement(Icon, {
     name: "check",
-    size: 16,
+    size: 18,
     color: C.green
   })), /*#__PURE__*/React.createElement("button", {
     onClick: () => setEditingId(null)
   }, /*#__PURE__*/React.createElement(Icon, {
     name: "x",
-    size: 16,
+    size: 18,
     color: C.textDim
-  }))) : /*#__PURE__*/React.createElement("div", {
+  }))))) : /*#__PURE__*/React.createElement("div", {
     key: e.id,
     className: "flex items-center justify-between rounded-xl px-4 py-2.5",
     style: {
@@ -1975,10 +2276,21 @@ function NutritionScreen({
   }, /*#__PURE__*/React.createElement("span", {
     className: "text-sm font-semibold",
     style: {
-      color: C.green,
       fontVariantNumeric: "tabular-nums"
     }
-  }, e.protein, " g"), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.green
+    }
+  }, e.protein, "g"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.textDim2
+    }
+  }, " / "), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: C.blue
+    }
+  }, e.carbs || 0, "g")), /*#__PURE__*/React.createElement("button", {
     onClick: () => startEdit(e)
   }, /*#__PURE__*/React.createElement(Icon, {
     name: "pencil",
@@ -2010,7 +2322,7 @@ function BottomNav({
     icon: "trendingUp"
   }, {
     k: "proteina",
-    l: "Proteína",
+    l: "Alimentación",
     icon: "flame"
   }];
   return /*#__PURE__*/React.createElement("div", {
@@ -2151,6 +2463,7 @@ function MainApp() {
   const [logs, setLogs] = useState(null);
   const [nutrition, setNutrition] = useState(null);
   const [hiddenFoods, setHiddenFoods] = useState(null);
+  const [goals, setGoals] = useState(null);
   const [error, setError] = useState("");
   const [tab, setTab] = useState("rutinas");
   const [rutinasView, setRutinasView] = useState(null);
@@ -2172,36 +2485,54 @@ function MainApp() {
         date: d.data().date,
         exercises: d.data().exercises || [],
         strength: d.data().strength,
-        endurance: d.data().endurance
+        endurance: d.data().endurance,
+        startedAt: d.data().startedAt,
+        endedAt: d.data().endedAt
       })));
       setNutrition(nSnap.docs.map(d => ({
         id: d.id,
         date: d.data().date,
         name: d.data().name,
-        protein: d.data().protein
+        protein: d.data().protein,
+        carbs: d.data().carbs,
+        loggedAt: d.data().loggedAt
       })));
-      setHiddenFoods(settingsDoc.exists && settingsDoc.data().hiddenFoods || []);
+      const settings = settingsDoc.exists ? settingsDoc.data() : {};
+      setHiddenFoods(settings.hiddenFoods || []);
+      setGoals({
+        proteinGoal: settings.proteinGoal || DEFAULT_PROTEIN_GOAL,
+        carbsGoal: settings.carbsGoal || null
+      });
     } catch (e) {
       setError("No se pudieron cargar los datos.");
       setRoutines([]);
       setLogs([]);
       setNutrition([]);
       setHiddenFoods([]);
+      setGoals({
+        proteinGoal: DEFAULT_PROTEIN_GOAL,
+        carbsGoal: null
+      });
     }
   }
-  async function addFood(name, protein) {
+  async function addFood(name, protein, carbs) {
     try {
+      const loggedAt = new Date().toISOString();
       const ref = await db.collection("nutrition").add({
         date: todayISO(),
         name,
         protein,
+        carbs: carbs || 0,
+        loggedAt,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       setNutrition(prev => [...(prev || []), {
         id: ref.id,
         date: todayISO(),
         name,
-        protein
+        protein,
+        carbs: carbs || 0,
+        loggedAt
       }]);
     } catch (e) {
       setError("No se pudo agregar el alimento.");
@@ -2242,6 +2573,16 @@ function MainApp() {
       });
     } catch (e) {
       setError("No se pudo guardar el cambio.");
+    }
+  }
+  async function updateGoals(next) {
+    setGoals(next);
+    try {
+      await db.collection("settings").doc("nutrition").set(next, {
+        merge: true
+      });
+    } catch (e) {
+      setError("No se pudieron guardar las metas.");
     }
   }
   async function createRoutine(name) {
@@ -2289,6 +2630,8 @@ function MainApp() {
         exercises: entry.exercises,
         strength: entry.strength,
         endurance: entry.endurance,
+        startedAt: entry.startedAt,
+        endedAt: entry.endedAt,
         createdAt: firebase.firestore.FieldValue.serverTimestamp()
       });
       setLogs(prev => [...(prev || []), {
@@ -2298,7 +2641,9 @@ function MainApp() {
         date: entry.date,
         exercises: entry.exercises,
         strength: entry.strength,
-        endurance: entry.endurance
+        endurance: entry.endurance,
+        startedAt: entry.startedAt,
+        endedAt: entry.endedAt
       }]);
       setRutinasView({
         type: "detail",
@@ -2320,7 +2665,7 @@ function MainApp() {
       setError("No se pudo borrar todo.");
     }
   }
-  const loading = routines === null || logs === null || nutrition === null || hiddenFoods === null;
+  const loading = routines === null || logs === null || nutrition === null || hiddenFoods === null || goals === null;
   const inSession = tab === "rutinas" && rutinasView?.type === "session";
   return /*#__PURE__*/React.createElement("div", {
     className: "min-h-screen w-full",
@@ -2376,15 +2721,18 @@ function MainApp() {
   }), tab === "progreso" && /*#__PURE__*/React.createElement(ProgressFlow, {
     routines: routines,
     logs: logs,
-    nutrition: nutrition
+    nutrition: nutrition,
+    goals: goals
   }), tab === "proteina" && /*#__PURE__*/React.createElement(NutritionScreen, {
     entries: nutrition,
     hiddenFoods: hiddenFoods,
+    goals: goals,
     onAdd: addFood,
     onRemoveOne: removeOneFoodEntry,
     onHideFood: hideFood,
     onRemoveEntry: removeFood,
-    onUpdateEntry: updateFoodEntry
+    onUpdateEntry: updateFoodEntry,
+    onUpdateGoals: updateGoals
   })), !loading && !inSession && /*#__PURE__*/React.createElement(BottomNav, {
     tab: tab,
     setTab: t => {
