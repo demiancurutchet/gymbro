@@ -656,7 +656,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.2.3";
+const APP_VERSION = "1.2.4";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1213,13 +1213,16 @@ function RoutinesList({
   onWipe,
   onReorder,
   userEmail,
-  onLogout
+  onLogout,
+  onReclaim
 }) {
   const [editing, setEditing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [confirmId, setConfirmId] = useState(null);
   const [confirmWipe, setConfirmWipe] = useState(false);
+  const [confirmReclaim, setConfirmReclaim] = useState(false);
+  const [reclaiming, setReclaiming] = useState(false);
   const [order, setOrder] = useState(routines);
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOffset, setDragOffset] = useState(0);
@@ -1471,7 +1474,35 @@ function RoutinesList({
     style: {
       color: C.blue
     }
-  }, "Cerrar sesión"), /*#__PURE__*/React.createElement("div", null, confirmWipe ? /*#__PURE__*/React.createElement("div", {
+  }, "Cerrar sesión"), /*#__PURE__*/React.createElement("div", null, confirmReclaim ? /*#__PURE__*/React.createElement("div", {
+    className: "text-xs max-w-xs mx-auto",
+    style: {
+      color: C.textDim
+    }
+  }, "Esto junta cualquier rutina/sesión/comida suelta de antes del login y la pone a tu nombre. Usalo una sola vez, antes de que alguien más entre con su propia cuenta.", " ", /*#__PURE__*/React.createElement("button", {
+    onClick: async () => {
+      setReclaiming(true);
+      await onReclaim();
+      setReclaiming(false);
+      setConfirmReclaim(false);
+    },
+    disabled: reclaiming,
+    className: "font-semibold",
+    style: {
+      color: C.green
+    }
+  }, reclaiming ? "Recuperando..." : "Sí, recuperar"), " ", "·", " ", /*#__PURE__*/React.createElement("button", {
+    onClick: () => setConfirmReclaim(false),
+    style: {
+      color: C.blue
+    }
+  }, "Cancelar")) : /*#__PURE__*/React.createElement("button", {
+    onClick: () => setConfirmReclaim(true),
+    className: "text-xs",
+    style: {
+      color: C.textDim2
+    }
+  }, "Recuperar datos de antes del login")), /*#__PURE__*/React.createElement("div", null, confirmWipe ? /*#__PURE__*/React.createElement("div", {
     className: "text-xs",
     style: {
       color: C.textDim
@@ -3555,6 +3586,31 @@ function MainApp({
       });
     }
   }
+  async function reclaimAllData() {
+    setError("");
+    try {
+      const collections = ["routines", "sessions", "nutrition"];
+      for (const col of collections) {
+        const snap = await db.collection(col).get();
+        const updates = [];
+        snap.docs.forEach(d => {
+          if (d.data().ownerUid !== uid) updates.push(d.ref.update({
+            ownerUid: uid
+          }));
+        });
+        if (updates.length) await Promise.all(updates);
+      }
+      const legacySettings = await db.collection("settings").doc("nutrition").get();
+      if (legacySettings.exists) {
+        await db.collection("settings").doc(uid).set(legacySettings.data(), {
+          merge: true
+        });
+      }
+      await loadAll();
+    } catch (e) {
+      setError("No se pudo recuperar: " + (e.message || e));
+    }
+  }
   async function addFood(name, protein, carbs) {
     try {
       const loggedAt = new Date().toISOString();
@@ -3795,7 +3851,8 @@ function MainApp({
     onWipe: wipeAll,
     onReorder: reorderRoutines,
     userEmail: userEmail,
-    onLogout: onLogout
+    onLogout: onLogout,
+    onReclaim: reclaimAllData
   }), tab === "rutinas" && rutinasView?.type === "detail" && /*#__PURE__*/React.createElement(RoutineDetail, {
     routine: routines.find(r => r.id === rutinasView.id),
     onBack: () => setRutinasView(null),
