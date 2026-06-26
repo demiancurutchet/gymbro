@@ -656,7 +656,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.2.0";
+const APP_VERSION = "1.2.1";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -3377,12 +3377,20 @@ function BottomNav({
 // Login screen (passwordless, Firebase email link)
 // ---------------------------------------------------------------------------
 function LoginScreen({
-  error
+  error: incomingError
 }) {
+  const [localError, setLocalError] = useState("");
+  const [loading, setLoading] = useState(false);
   function loginWithGoogle() {
+    setLocalError("");
+    setLoading(true);
     const provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithRedirect(provider);
+    auth.signInWithRedirect(provider).catch(e => {
+      setLoading(false);
+      setLocalError(`${e.code || ""} ${e.message || e}`.trim());
+    });
   }
+  const error = localError || incomingError;
   return /*#__PURE__*/React.createElement("div", {
     className: "flex flex-col items-center justify-center px-6",
     style: {
@@ -3409,10 +3417,12 @@ function LoginScreen({
     }
   }, "Iniciá sesión para acceder a tus rutinas desde cualquier dispositivo"), /*#__PURE__*/React.createElement("button", {
     onClick: loginWithGoogle,
+    disabled: loading,
     className: "w-full max-w-sm flex items-center justify-center gap-3 rounded-xl py-3 text-sm font-semibold",
     style: {
       background: "#fff",
-      color: "#1f1f1f"
+      color: "#1f1f1f",
+      opacity: loading ? 0.7 : 1
     }
   }, /*#__PURE__*/React.createElement("svg", {
     width: "18",
@@ -3430,7 +3440,7 @@ function LoginScreen({
   }), /*#__PURE__*/React.createElement("path", {
     fill: "#EA4335",
     d: "M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 6.69C4.672 4.564 6.656 3.58 9 3.58z"
-  })), "Continuar con Google"), error && /*#__PURE__*/React.createElement("p", {
+  })), loading ? "Redirigiendo..." : "Continuar con Google"), error && /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-center mt-3 max-w-xs",
     style: {
       color: C.red
