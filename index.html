@@ -656,7 +656,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.1.9";
+const APP_VERSION = "1.1.10";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1771,7 +1771,7 @@ function RoutineDetail({
       background: C.green,
       color: C.greenText
     }
-  }, "Iniciar sesión de hoy"), editing && /*#__PURE__*/React.createElement("div", {
+  }, todaySession ? "Editar sesión de hoy" : "Iniciar sesión de hoy"), editing && /*#__PURE__*/React.createElement("div", {
     className: "mt-8 text-center"
   }, confirmDeleteRoutine ? /*#__PURE__*/React.createElement("div", {
     className: "text-sm",
