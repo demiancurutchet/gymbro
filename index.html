@@ -656,7 +656,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.1.10";
+const APP_VERSION = "1.2.0";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1211,7 +1211,9 @@ function RoutinesList({
   onCreate,
   onDelete,
   onWipe,
-  onReorder
+  onReorder,
+  userEmail,
+  onLogout
 }) {
   const [editing, setEditing] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -1314,7 +1316,7 @@ function RoutinesList({
     style: {
       color: C.textDim
     }
-  }, routines.length, " ", routines.length === 1 ? "rutina" : "rutinas"), routines.length === 0 && !creating && /*#__PURE__*/React.createElement(EmptyState, {
+  }, routines.length, " ", routines.length === 1 ? "rutina" : "rutinas", userEmail ? ` · ${userEmail}` : ""), routines.length === 0 && !creating && /*#__PURE__*/React.createElement(EmptyState, {
     icon: /*#__PURE__*/React.createElement(Icon, {
       name: "dumbbell",
       size: 24,
@@ -1463,7 +1465,13 @@ function RoutinesList({
     size: 16
   }), " Nueva rutina"), /*#__PURE__*/React.createElement("div", {
     className: "mt-10 text-center space-y-3"
-  }, /*#__PURE__*/React.createElement("div", null, confirmWipe ? /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: onLogout,
+    className: "text-xs font-medium",
+    style: {
+      color: C.blue
+    }
+  }, "Cerrar sesión"), /*#__PURE__*/React.createElement("div", null, confirmWipe ? /*#__PURE__*/React.createElement("div", {
     className: "text-xs",
     style: {
       color: C.textDim
@@ -3369,22 +3377,11 @@ function BottomNav({
 // Login screen (passwordless, Firebase email link)
 // ---------------------------------------------------------------------------
 function LoginScreen({
-  error: incomingError
+  error
 }) {
-  const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState(incomingError || "");
-  const [loading, setLoading] = useState(false);
-  function sendLink() {
-    const trimmed = email.trim();
-    if (!trimmed) return;
-    setLoading(true);
-    setError("");
-    window.localStorage.setItem("emailForSignIn", trimmed);
-    auth.sendSignInLinkToEmail(trimmed, {
-      url: window.location.origin + window.location.pathname,
-      handleCodeInApp: true
-    }).then(() => setSent(true)).catch(e => setError(e.message)).finally(() => setLoading(false));
+  function loginWithGoogle() {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithRedirect(provider);
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "flex flex-col items-center justify-center px-6",
@@ -3405,48 +3402,40 @@ function LoginScreen({
     style: {
       color: C.text
     }
-  }, "Mi gimnasio"), /*#__PURE__*/React.createElement("p", {
+  }, "Gymbro"), /*#__PURE__*/React.createElement("p", {
     className: "text-sm mb-6 text-center max-w-xs",
     style: {
       color: C.textDim
     }
-  }, "Ingresá tu email para acceder a tus rutinas desde cualquier dispositivo"), sent ? /*#__PURE__*/React.createElement("p", {
-    className: "text-sm text-center max-w-xs",
+  }, "Iniciá sesión para acceder a tus rutinas desde cualquier dispositivo"), /*#__PURE__*/React.createElement("button", {
+    onClick: loginWithGoogle,
+    className: "w-full max-w-sm flex items-center justify-center gap-3 rounded-xl py-3 text-sm font-semibold",
     style: {
-      color: C.green
+      background: "#fff",
+      color: "#1f1f1f"
     }
-  }, "Listo. Revisá tu email y tocá el link para entrar.") : /*#__PURE__*/React.createElement("div", {
-    className: "w-full max-w-sm space-y-3"
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "email",
-    value: email,
-    onChange: e => setEmail(e.target.value),
-    onKeyDown: e => {
-      if (e.key === "Enter") sendLink();
-    },
-    placeholder: "tu@email.com",
-    autoFocus: true,
-    className: "w-full rounded-xl px-4 py-3 text-sm outline-none",
-    style: {
-      background: C.surface,
-      color: C.text,
-      border: `1px solid ${C.border}`
-    }
-  }), /*#__PURE__*/React.createElement("button", {
-    onClick: sendLink,
-    disabled: loading,
-    className: "w-full rounded-xl py-3 text-sm font-semibold",
-    style: {
-      background: C.green,
-      color: C.greenText,
-      opacity: loading ? 0.6 : 1
-    }
-  }, loading ? "Enviando..." : "Enviarme el link"), error && /*#__PURE__*/React.createElement("p", {
-    className: "text-xs text-center",
+  }, /*#__PURE__*/React.createElement("svg", {
+    width: "18",
+    height: "18",
+    viewBox: "0 0 18 18"
+  }, /*#__PURE__*/React.createElement("path", {
+    fill: "#4285F4",
+    d: "M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.259h2.908c1.702-1.567 2.684-3.874 2.684-6.617z"
+  }), /*#__PURE__*/React.createElement("path", {
+    fill: "#34A853",
+    d: "M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"
+  }), /*#__PURE__*/React.createElement("path", {
+    fill: "#FBBC05",
+    d: "M3.964 10.71c-.18-.54-.282-1.117-.282-1.71s.102-1.17.282-1.71V4.958H.957C.347 6.173 0 7.55 0 9s.348 2.827.957 4.042l3.007-2.332z"
+  }), /*#__PURE__*/React.createElement("path", {
+    fill: "#EA4335",
+    d: "M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 6.69C4.672 4.564 6.656 3.58 9 3.58z"
+  })), "Continuar con Google"), error && /*#__PURE__*/React.createElement("p", {
+    className: "text-xs text-center mt-3 max-w-xs",
     style: {
       color: C.red
     }
-  }, error)));
+  }, error));
 }
 function LoadingScreen() {
   return /*#__PURE__*/React.createElement("div", {
@@ -3469,7 +3458,37 @@ function LoadingScreen() {
 // ---------------------------------------------------------------------------
 // Main app (once logged in) — talks to Firestore
 // ---------------------------------------------------------------------------
-function MainApp() {
+async function migrateLegacyData(uid) {
+  const flagRef = db.collection("settings").doc("migrated_" + uid);
+  const flagDoc = await flagRef.get();
+  if (flagDoc.exists) return;
+  const collections = ["routines", "sessions", "nutrition"];
+  for (const col of collections) {
+    const snap = await db.collection(col).get();
+    const updates = [];
+    snap.docs.forEach(d => {
+      if (!d.data().ownerUid) updates.push(d.ref.update({
+        ownerUid: uid
+      }));
+    });
+    if (updates.length) await Promise.all(updates);
+  }
+  const legacySettings = await db.collection("settings").doc("nutrition").get();
+  if (legacySettings.exists) {
+    await db.collection("settings").doc(uid).set(legacySettings.data(), {
+      merge: true
+    });
+  }
+  await flagRef.set({
+    done: true,
+    migratedAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+}
+function MainApp({
+  uid,
+  userEmail,
+  onLogout
+}) {
   const [routines, setRoutines] = useState(null);
   const [logs, setLogs] = useState(null);
   const [nutrition, setNutrition] = useState(null);
@@ -3484,7 +3503,8 @@ function MainApp() {
   }, []);
   async function loadAll() {
     try {
-      const [rSnap, sSnap, nSnap, settingsDoc] = await Promise.all([db.collection("routines").get(), db.collection("sessions").get(), db.collection("nutrition").get(), db.collection("settings").doc("nutrition").get()]);
+      await migrateLegacyData(uid);
+      const [rSnap, sSnap, nSnap, settingsDoc] = await Promise.all([db.collection("routines").where("ownerUid", "==", uid).get(), db.collection("sessions").where("ownerUid", "==", uid).get(), db.collection("nutrition").where("ownerUid", "==", uid).get(), db.collection("settings").doc(uid).get()]);
       const loadedRoutines = rSnap.docs.map(d => ({
         id: d.id,
         name: d.data().name,
@@ -3539,6 +3559,7 @@ function MainApp() {
     try {
       const loggedAt = new Date().toISOString();
       const ref = await db.collection("nutrition").add({
+        ownerUid: uid,
         date: todayISO(),
         name,
         protein,
@@ -3586,7 +3607,8 @@ function MainApp() {
   async function hideFood(name) {
     setHiddenFoods(prev => [...(prev || []), name]);
     try {
-      await db.collection("settings").doc("nutrition").set({
+      await db.collection("settings").doc(uid).set({
+        ownerUid: uid,
         hiddenFoods: firebase.firestore.FieldValue.arrayUnion(name)
       }, {
         merge: true
@@ -3598,7 +3620,10 @@ function MainApp() {
   async function updateGoals(next) {
     setGoals(next);
     try {
-      await db.collection("settings").doc("nutrition").set(next, {
+      await db.collection("settings").doc(uid).set({
+        ...next,
+        ownerUid: uid
+      }, {
         merge: true
       });
     } catch (e) {
@@ -3615,7 +3640,8 @@ function MainApp() {
     };
     setCustomFoods(prev => [...(prev || []), entry]);
     try {
-      await db.collection("settings").doc("nutrition").set({
+      await db.collection("settings").doc(uid).set({
+        ownerUid: uid,
         customFoods: firebase.firestore.FieldValue.arrayUnion(entry)
       }, {
         merge: true
@@ -3628,6 +3654,7 @@ function MainApp() {
     try {
       const order = routines.length;
       const ref = await db.collection("routines").add({
+        ownerUid: uid,
         name,
         exercises: [],
         order,
@@ -3679,6 +3706,7 @@ function MainApp() {
   async function saveSession(entry) {
     try {
       const ref = await db.collection("sessions").add({
+        ownerUid: uid,
         routineId: entry.routineId,
         routineName: entry.routineName,
         date: entry.date,
@@ -3717,7 +3745,7 @@ function MainApp() {
   }
   async function wipeAll() {
     try {
-      const [rSnap, sSnap, nSnap] = await Promise.all([db.collection("routines").get(), db.collection("sessions").get(), db.collection("nutrition").get()]);
+      const [rSnap, sSnap, nSnap] = await Promise.all([db.collection("routines").where("ownerUid", "==", uid).get(), db.collection("sessions").where("ownerUid", "==", uid).get(), db.collection("nutrition").where("ownerUid", "==", uid).get()]);
       await Promise.all([...rSnap.docs, ...sSnap.docs, ...nSnap.docs].map(d => d.ref.delete()));
       setRoutines([]);
       setLogs([]);
@@ -3765,7 +3793,9 @@ function MainApp() {
     onCreate: createRoutine,
     onDelete: deleteRoutine,
     onWipe: wipeAll,
-    onReorder: reorderRoutines
+    onReorder: reorderRoutines,
+    userEmail: userEmail,
+    onLogout: onLogout
   }), tab === "rutinas" && rutinasView?.type === "detail" && /*#__PURE__*/React.createElement(RoutineDetail, {
     routine: routines.find(r => r.id === rutinasView.id),
     onBack: () => setRutinasView(null),
@@ -3830,35 +3860,19 @@ function Root() {
   const [user, setUser] = useState(undefined); // undefined = checking
   const [authError, setAuthError] = useState("");
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(u => {
-      if (u) {
-        setUser(u);
-      } else {
-        auth.signInAnonymously().catch(e => setAuthError(e.message));
-      }
-    });
+    auth.getRedirectResult().catch(e => setAuthError(e.message));
+    const unsubscribe = auth.onAuthStateChanged(u => setUser(u || null));
     return unsubscribe;
   }, []);
-  if (authError) {
-    return /*#__PURE__*/React.createElement("div", {
-      className: "flex flex-col items-center justify-center px-6 text-center",
-      style: {
-        minHeight: "100vh"
-      }
-    }, /*#__PURE__*/React.createElement("p", {
-      className: "text-sm",
-      style: {
-        color: C.red
-      }
-    }, "No se pudo iniciar: ", authError), /*#__PURE__*/React.createElement("p", {
-      className: "text-xs mt-2 max-w-xs",
-      style: {
-        color: C.textDim
-      }
-    }, "Activá el método \"Anonymous\" en Firebase → Authentication → Sign-in method."));
-  }
-  if (!user) return /*#__PURE__*/React.createElement(LoadingScreen, null);
-  return /*#__PURE__*/React.createElement(MainApp, null);
+  if (user === undefined) return /*#__PURE__*/React.createElement(LoadingScreen, null);
+  if (!user) return /*#__PURE__*/React.createElement(LoginScreen, {
+    error: authError
+  });
+  return /*#__PURE__*/React.createElement(MainApp, {
+    uid: user.uid,
+    userEmail: user.email,
+    onLogout: () => auth.signOut()
+  });
 }
 ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(Root, null));
 </script>
