@@ -656,7 +656,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.2.1";
+const APP_VERSION = "1.2.2";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -3385,10 +3385,7 @@ function LoginScreen({
     setLocalError("");
     setLoading(true);
     const provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithRedirect(provider).catch(e => {
-      setLoading(false);
-      setLocalError(`${e.code || ""} ${e.message || e}`.trim());
-    });
+    auth.signInWithPopup(provider).catch(e => setLocalError(`${e.code || ""} ${e.message || e}`.trim())).finally(() => setLoading(false));
   }
   const error = localError || incomingError;
   return /*#__PURE__*/React.createElement("div", {
@@ -3440,7 +3437,7 @@ function LoginScreen({
   }), /*#__PURE__*/React.createElement("path", {
     fill: "#EA4335",
     d: "M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.958L3.964 6.69C4.672 4.564 6.656 3.58 9 3.58z"
-  })), loading ? "Redirigiendo..." : "Continuar con Google"), error && /*#__PURE__*/React.createElement("p", {
+  })), loading ? "Abriendo Google..." : "Continuar con Google"), error && /*#__PURE__*/React.createElement("p", {
     className: "text-xs text-center mt-3 max-w-xs",
     style: {
       color: C.red
@@ -3868,16 +3865,13 @@ function MainApp({
 // ---------------------------------------------------------------------------
 function Root() {
   const [user, setUser] = useState(undefined); // undefined = checking
-  const [authError, setAuthError] = useState("");
+
   useEffect(() => {
-    auth.getRedirectResult().catch(e => setAuthError(e.message));
     const unsubscribe = auth.onAuthStateChanged(u => setUser(u || null));
     return unsubscribe;
   }, []);
   if (user === undefined) return /*#__PURE__*/React.createElement(LoadingScreen, null);
-  if (!user) return /*#__PURE__*/React.createElement(LoginScreen, {
-    error: authError
-  });
+  if (!user) return /*#__PURE__*/React.createElement(LoginScreen, null);
   return /*#__PURE__*/React.createElement(MainApp, {
     uid: user.uid,
     userEmail: user.email,
