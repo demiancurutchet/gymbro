@@ -656,7 +656,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.1.7";
+const APP_VERSION = "1.1.9";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -755,12 +755,32 @@ const FOODS = [{
   protein: 8,
   carbs: 50
 }];
+function parseLocaleNumber(str) {
+  if (str === "" || str == null) return null;
+  const n = Number(String(str).replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+}
 function NumField({
   label,
   value,
   onChange,
   step = 1
 }) {
+  const [text, setText] = useState(() => value === "" || value == null ? "" : String(value));
+  useEffect(() => {
+    setText(prev => parseLocaleNumber(prev) === value ? prev : value === "" || value == null ? "" : String(value));
+  }, [value]);
+  function handleChange(e) {
+    const raw = e.target.value;
+    if (!/^\d*[.,]?\d*$/.test(raw)) return;
+    setText(raw);
+    if (raw === "") {
+      onChange("");
+      return;
+    }
+    const parsed = parseLocaleNumber(raw);
+    if (parsed !== null) onChange(parsed);
+  }
   return /*#__PURE__*/React.createElement("label", {
     className: "flex-1 flex flex-col gap-1"
   }, /*#__PURE__*/React.createElement("span", {
@@ -769,14 +789,10 @@ function NumField({
       color: C.textDim2
     }
   }, label), /*#__PURE__*/React.createElement("input", {
-    type: "number",
+    type: "text",
     inputMode: "decimal",
-    step: step,
-    value: value,
-    onChange: e => {
-      const v = e.target.value;
-      onChange(v === "" ? "" : Number(v));
-    },
+    value: text,
+    onChange: handleChange,
     className: "w-full rounded-xl px-3 py-2 text-sm outline-none",
     style: {
       background: C.surface,
@@ -1041,35 +1057,32 @@ function ExercisePlanEditor({
     className: "space-y-4"
   }, onToggleBodyweight && /*#__PURE__*/React.createElement("button", {
     onClick: () => onToggleBodyweight(!bodyweight),
-    className: "flex items-center justify-between w-full rounded-xl px-3 py-2.5",
-    style: {
-      background: C.surface2
-    }
+    className: "flex items-center gap-2"
   }, /*#__PURE__*/React.createElement("span", {
-    className: "text-sm",
-    style: {
-      color: C.text
-    }
-  }, "Con tu propio peso (dominadas, fondos, etc.)"), /*#__PURE__*/React.createElement("span", {
     className: "relative shrink-0",
     style: {
-      width: 38,
-      height: 22,
-      borderRadius: 11,
-      background: bodyweight ? C.green : C.surface,
+      width: 28,
+      height: 17,
+      borderRadius: 9,
+      background: bodyweight ? C.green : C.surface2,
       display: "inline-block"
     }
   }, /*#__PURE__*/React.createElement("span", {
     className: "absolute rounded-full",
     style: {
-      width: 18,
-      height: 18,
+      width: 13,
+      height: 13,
       top: 2,
-      left: bodyweight ? 18 : 2,
+      left: bodyweight ? 13 : 2,
       background: "#fff",
       transition: "left .15s ease"
     }
-  }))), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("span", {
+    className: "text-xs",
+    style: {
+      color: C.textDim
+    }
+  }, "Con peso propio")), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between rounded-xl px-3 py-2.5",
     style: {
       background: C.surface2
@@ -1497,7 +1510,8 @@ function RoutineDetail({
   onEditTodaySession
 }) {
   const [editing, setEditing] = useState(false);
-  const [confirmDeleteEx, setConfirmDeleteEx] = useState(null);
+  const [focusedIdx, setFocusedIdx] = useState(null);
+  const [confirmDeleteEx, setConfirmDeleteEx] = useState(false);
   const [confirmDeleteRoutine, setConfirmDeleteRoutine] = useState(false);
   const [addingExercise, setAddingExercise] = useState(false);
   const [newExName, setNewExName] = useState("");
@@ -1524,12 +1538,15 @@ function RoutineDetail({
       ...routine,
       exercises: exs
     });
+    setFocusedIdx(null);
+    setConfirmDeleteEx(false);
   }
   function startAdding() {
     setNewExName("");
     setDraftSets(defaultDraftSets());
     setDraftBodyweight(false);
     setAddingExercise(true);
+    setFocusedIdx(null);
   }
   function cancelAdding() {
     setAddingExercise(false);
@@ -1548,13 +1565,73 @@ function RoutineDetail({
     });
     setAddingExercise(false);
   }
+  if (editing && focusedIdx !== null && routine.exercises[focusedIdx]) {
+    const ex = routine.exercises[focusedIdx];
+    return /*#__PURE__*/React.createElement("div", {
+      className: "pb-10"
+    }, /*#__PURE__*/React.createElement(BackHeader, {
+      onBack: () => {
+        setFocusedIdx(null);
+        setConfirmDeleteEx(false);
+      },
+      title: "Editar ejercicio",
+      right: confirmDeleteEx ? /*#__PURE__*/React.createElement("div", {
+        className: "flex gap-2"
+      }, /*#__PURE__*/React.createElement("button", {
+        onClick: () => removeExercise(focusedIdx),
+        className: "text-xs font-semibold",
+        style: {
+          color: C.red
+        }
+      }, "Eliminar"), /*#__PURE__*/React.createElement("button", {
+        onClick: () => setConfirmDeleteEx(false),
+        className: "text-xs",
+        style: {
+          color: C.textDim
+        }
+      }, "Cancelar")) : /*#__PURE__*/React.createElement("button", {
+        onClick: () => setConfirmDeleteEx(true)
+      }, /*#__PURE__*/React.createElement(Icon, {
+        name: "trash",
+        size: 18,
+        color: C.red
+      }))
+    }), /*#__PURE__*/React.createElement("div", {
+      className: "px-4 pt-5 space-y-4"
+    }, /*#__PURE__*/React.createElement("input", {
+      value: ex.name,
+      onChange: e => updateExercise(focusedIdx, {
+        ...ex,
+        name: e.target.value
+      }),
+      className: "text-xl font-bold tracking-tight bg-transparent outline-none w-full pb-2",
+      style: {
+        color: C.text,
+        borderBottom: `1px solid ${C.border}`
+      }
+    }), /*#__PURE__*/React.createElement(ExercisePlanEditor, {
+      sets: ex.sets,
+      onChange: sets => updateExercise(focusedIdx, {
+        ...ex,
+        sets
+      }),
+      bodyweight: ex.bodyweight,
+      onToggleBodyweight: v => updateExercise(focusedIdx, {
+        ...ex,
+        bodyweight: v
+      })
+    })));
+  }
   return /*#__PURE__*/React.createElement("div", {
     className: "pb-10"
   }, /*#__PURE__*/React.createElement(BackHeader, {
     onBack: onBack,
     title: routine.name,
     right: /*#__PURE__*/React.createElement("button", {
-      onClick: () => setEditing(e => !e),
+      onClick: () => {
+        setEditing(e => !e);
+        setFocusedIdx(null);
+      },
       className: "text-sm font-medium",
       style: {
         color: C.blue
@@ -1593,66 +1670,41 @@ function RoutineDetail({
     }, "Agregar ejercicio")
   }), /*#__PURE__*/React.createElement("div", {
     className: "space-y-3"
-  }, routine.exercises.map((ex, idx) => /*#__PURE__*/React.createElement("div", {
+  }, routine.exercises.map((ex, idx) => editing ? /*#__PURE__*/React.createElement("button", {
+    key: ex.id,
+    onClick: () => setFocusedIdx(idx),
+    className: "w-full flex items-center justify-between rounded-2xl px-4 py-3.5 text-left",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    className: "font-semibold",
+    style: {
+      color: C.text
+    }
+  }, ex.name, ex.bodyweight ? " 🤸" : ""), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs mt-0.5",
+    style: {
+      color: C.textDim
+    }
+  }, ex.sets.length, " ", ex.sets.length === 1 ? "serie" : "series")), /*#__PURE__*/React.createElement(Icon, {
+    name: "chevronRight",
+    size: 18,
+    color: C.textDim2
+  })) : /*#__PURE__*/React.createElement("div", {
     key: ex.id,
     className: "rounded-2xl p-4",
     style: {
       background: C.surface,
       border: `1px solid ${C.border}`
     }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between mb-3"
-  }, editing ? /*#__PURE__*/React.createElement("input", {
-    value: ex.name,
-    onChange: e => updateExercise(idx, {
-      ...ex,
-      name: e.target.value
-    }),
-    className: "font-semibold bg-transparent outline-none flex-1",
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "font-semibold mb-2",
     style: {
       color: C.text
     }
-  }) : /*#__PURE__*/React.createElement("p", {
-    className: "font-semibold",
-    style: {
-      color: C.text
-    }
-  }, ex.name, ex.bodyweight ? " 🤸" : ""), editing && (confirmDeleteEx === ex.id ? /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-2 ml-2"
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => {
-      removeExercise(idx);
-      setConfirmDeleteEx(null);
-    },
-    className: "text-xs font-semibold",
-    style: {
-      color: C.red
-    }
-  }, "Eliminar"), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setConfirmDeleteEx(null),
-    className: "text-xs",
-    style: {
-      color: C.textDim
-    }
-  }, "Cancelar")) : /*#__PURE__*/React.createElement("button", {
-    onClick: () => setConfirmDeleteEx(ex.id),
-    className: "ml-2 p-1"
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "trash",
-    size: 16,
-    color: C.red
-  })))), editing ? /*#__PURE__*/React.createElement(ExercisePlanEditor, {
-    sets: ex.sets,
-    onChange: sets => updateExercise(idx, {
-      ...ex,
-      sets
-    }),
-    bodyweight: ex.bodyweight,
-    onToggleBodyweight: v => updateExercise(idx, {
-      ...ex,
-      bodyweight: v
-    })
-  }) : /*#__PURE__*/React.createElement("div", {
+  }, ex.name, ex.bodyweight ? " 🤸" : ""), /*#__PURE__*/React.createElement("div", {
     className: "space-y-1.5"
   }, ex.sets.map((s, i) => /*#__PURE__*/React.createElement("p", {
     key: s.id,
@@ -1712,21 +1764,14 @@ function RoutineDetail({
   }, /*#__PURE__*/React.createElement(Icon, {
     name: "plus",
     size: 16
-  }), " Agregar ejercicio"), !editing && routine.exercises.length > 0 && (todaySession ? /*#__PURE__*/React.createElement("button", {
-    onClick: () => onEditTodaySession(todaySession.id),
-    className: "mt-6 w-full rounded-2xl py-3.5 text-base font-semibold",
-    style: {
-      background: C.blue,
-      color: "#fff"
-    }
-  }, "Ya entrenaste hoy (", todaySession.routineName, ") · Editar esa sesión") : /*#__PURE__*/React.createElement("button", {
-    onClick: onStartSession,
+  }), " Agregar ejercicio"), !editing && routine.exercises.length > 0 && /*#__PURE__*/React.createElement("button", {
+    onClick: () => todaySession ? onEditTodaySession(todaySession.id) : onStartSession(),
     className: "mt-6 w-full rounded-2xl py-3.5 text-base font-semibold",
     style: {
       background: C.green,
       color: C.greenText
     }
-  }, "Iniciar sesión de hoy")), editing && /*#__PURE__*/React.createElement("div", {
+  }, "Iniciar sesión de hoy"), editing && /*#__PURE__*/React.createElement("div", {
     className: "mt-8 text-center"
   }, confirmDeleteRoutine ? /*#__PURE__*/React.createElement("div", {
     className: "text-sm",
@@ -2851,7 +2896,7 @@ function NutritionScreen({
   }
   function saveGoals() {
     const p = Number(goalProteinInput) || DEFAULT_PROTEIN_GOAL;
-    const c = goalCarbsInput === "" ? null : Number(goalCarbsInput) || null;
+    const c = goalCarbsInput === "" ? null : parseLocaleNumber(goalCarbsInput) || null;
     onUpdateGoals({
       proteinGoal: p,
       carbsGoal: c
@@ -2900,10 +2945,12 @@ function NutritionScreen({
       color: C.textDim2
     }
   }, "Meta de carbohidratos (g) — opcional"), /*#__PURE__*/React.createElement("input", {
-    type: "number",
+    type: "text",
     inputMode: "decimal",
     value: goalCarbsInput,
-    onChange: e => setGoalCarbsInput(e.target.value),
+    onChange: e => {
+      if (/^\d*[.,]?\d*$/.test(e.target.value)) setGoalCarbsInput(e.target.value);
+    },
     placeholder: "Sin meta",
     className: "w-full rounded-xl px-3 py-2 text-sm outline-none",
     style: {
