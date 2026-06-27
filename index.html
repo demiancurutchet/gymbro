@@ -694,7 +694,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.4.2";
+const APP_VERSION = "1.4.3";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1265,7 +1265,7 @@ function HomeScreen({
   }, /*#__PURE__*/React.createElement("div", {
     className: "relative",
     style: {
-      height: 600
+      height: 366
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -1355,10 +1355,13 @@ function HomeScreen({
     }
   }, "Sesión de ejercicio registrada")), /*#__PURE__*/React.createElement("div", {
     style: {
-      height: 1,
-      background: "rgba(255,255,255,0.12)"
-    },
-    className: "mb-5"
+      width: 25,
+      height: 4,
+      borderRadius: 2,
+      background: "rgba(255,255,255,0.2)",
+      marginTop: 32,
+      marginBottom: 32
+    }
   }), /*#__PURE__*/React.createElement("p", {
     className: "text-sm font-bold uppercase mb-2",
     style: {
