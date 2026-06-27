@@ -186,6 +186,15 @@ function fmtHomeDate(iso) {
   });
   return `${day} ${month}`.toUpperCase();
 }
+function weeksSinceStart(logs, nutrition) {
+  const dates = [...(logs || []).map(l => l.date), ...(nutrition || []).map(n => n.date)].filter(Boolean);
+  if (dates.length === 0) return 1;
+  const minDate = dates.reduce((min, d) => d < min ? d : min);
+  const start = startOfWeekMonday(new Date(minDate + "T00:00:00"));
+  const now = startOfWeekMonday(new Date());
+  const diffWeeks = Math.round((now - start) / (7 * 86400000));
+  return diffWeeks + 1;
+}
 function makeNormalSet(reps, weight) {
   return {
     id: uid(),
@@ -694,7 +703,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.4.4";
+const APP_VERSION = "1.4.8";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1265,12 +1274,12 @@ function HomeScreen({
   }, /*#__PURE__*/React.createElement("div", {
     className: "relative",
     style: {
-      height: 366
+      height: 318
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       position: "absolute",
-      top: 80,
+      top: 32,
       left: 24
     }
   }, /*#__PURE__*/React.createElement("h1", {
@@ -1286,10 +1295,12 @@ function HomeScreen({
   }, "Versión ", APP_VERSION)), /*#__PURE__*/React.createElement("div", {
     style: {
       position: "absolute",
-      top: 80,
+      top: 32,
       right: 24
     },
-    className: "flex items-center gap-1.5"
+    className: "text-right"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-end gap-1.5"
   }, /*#__PURE__*/React.createElement(Icon, {
     name: "calendar",
     size: 15,
@@ -1299,10 +1310,15 @@ function HomeScreen({
     style: {
       color: C.textDim
     }
-  }, fmtHomeDate(todayISO()))), /*#__PURE__*/React.createElement("div", {
+  }, fmtHomeDate(todayISO()))), /*#__PURE__*/React.createElement("p", {
+    className: "text-xs font-bold uppercase mt-0.5",
+    style: {
+      color: C.textDim2
+    }
+  }, "Semana ", weeksSinceStart(logs, nutrition))), /*#__PURE__*/React.createElement("div", {
     style: {
       position: "absolute",
-      top: 190,
+      top: 142,
       right: 0,
       width: 210,
       zIndex: 1
@@ -1318,7 +1334,7 @@ function HomeScreen({
   })), /*#__PURE__*/React.createElement("div", {
     style: {
       position: "absolute",
-      top: 230,
+      top: 182,
       left: 24,
       width: 143,
       zIndex: 2
@@ -1359,9 +1375,9 @@ function HomeScreen({
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      width: 143,
+      width: 24,
       height: 4,
-      borderRadius: 2,
+      borderRadius: 0,
       background: "rgba(255,255,255,0.2)",
       marginTop: 32,
       marginBottom: 32
@@ -1469,16 +1485,13 @@ function RoutinesList({
   onWipe,
   onReorder,
   userEmail,
-  onLogout,
-  onReclaim
+  onLogout
 }) {
   const [editing, setEditing] = useState(false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [confirmId, setConfirmId] = useState(null);
   const [confirmWipe, setConfirmWipe] = useState(false);
-  const [confirmReclaim, setConfirmReclaim] = useState(false);
-  const [reclaiming, setReclaiming] = useState(false);
   const [order, setOrder] = useState(routines);
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOffset, setDragOffset] = useState(0);
@@ -1730,35 +1743,7 @@ function RoutinesList({
     style: {
       color: C.blue
     }
-  }, "Cerrar sesión"), /*#__PURE__*/React.createElement("div", null, confirmReclaim ? /*#__PURE__*/React.createElement("div", {
-    className: "text-xs max-w-xs mx-auto",
-    style: {
-      color: C.textDim
-    }
-  }, "Esto junta cualquier rutina/sesión/comida suelta de antes del login y la pone a tu nombre. Usalo una sola vez, antes de que alguien más entre con su propia cuenta.", " ", /*#__PURE__*/React.createElement("button", {
-    onClick: async () => {
-      setReclaiming(true);
-      await onReclaim();
-      setReclaiming(false);
-      setConfirmReclaim(false);
-    },
-    disabled: reclaiming,
-    className: "font-semibold",
-    style: {
-      color: C.green
-    }
-  }, reclaiming ? "Recuperando..." : "Sí, recuperar"), " ", "·", " ", /*#__PURE__*/React.createElement("button", {
-    onClick: () => setConfirmReclaim(false),
-    style: {
-      color: C.blue
-    }
-  }, "Cancelar")) : /*#__PURE__*/React.createElement("button", {
-    onClick: () => setConfirmReclaim(true),
-    className: "text-xs",
-    style: {
-      color: C.textDim2
-    }
-  }, "Recuperar datos de antes del login")), /*#__PURE__*/React.createElement("div", null, confirmWipe ? /*#__PURE__*/React.createElement("div", {
+  }, "Cerrar sesión"), /*#__PURE__*/React.createElement("div", null, confirmWipe ? /*#__PURE__*/React.createElement("div", {
     className: "text-xs",
     style: {
       color: C.textDim
@@ -4201,8 +4186,7 @@ function MainApp({
     onWipe: wipeAll,
     onReorder: reorderRoutines,
     userEmail: userEmail,
-    onLogout: onLogout,
-    onReclaim: reclaimAllData
+    onLogout: onLogout
   }), tab === "rutinas" && rutinasView?.type === "detail" && /*#__PURE__*/React.createElement(RoutineDetail, {
     routine: routines.find(r => r.id === rutinasView.id),
     onBack: () => setRutinasView(null),
