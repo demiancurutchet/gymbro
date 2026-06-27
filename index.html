@@ -21,7 +21,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <style>
-  html, body { margin: 0; background: linear-gradient(0deg, #0d1a37, #04070b 90%); font-family: 'Agdasima', -apple-system, sans-serif; }
+  html, body { margin: 0; background: linear-gradient(0deg, #0d1a37, #04070b 90%); background-color: #03060d; font-family: 'Agdasima', -apple-system, sans-serif; }
   * { box-sizing: border-box; }
   input[type=number]::-webkit-outer-spin-button,
   input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -709,7 +709,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.5.2";
+const APP_VERSION = "1.5.3";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -4124,7 +4124,8 @@ function MainApp({
   return /*#__PURE__*/React.createElement("div", {
     className: "min-h-screen w-full",
     style: {
-      background: C.bg
+      background: C.bg,
+      backgroundColor: "#03060d"
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "max-w-xl mx-auto min-h-screen relative",
