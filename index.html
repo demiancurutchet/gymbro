@@ -311,7 +311,7 @@ function historyForExercise(logs, routineId, exerciseName) {
 // ---------------------------------------------------------------------------
 const WEEKDAY_NAMES = ["domingos", "lunes", "martes", "miércoles", "jueves", "viernes", "sábados"];
 const MUSCLE_GROUPS = ["Pecho", "Espalda", "Bíceps", "Tríceps", "Hombros", "Cuádriceps"];
-const PAIN_AREAS = ["Lumbares", "Espalda", "Cuello", "Hombros", "Bíceps", "Tríceps", "Pecho", "Cuádriceps", "Rodillas"];
+const PAIN_AREAS = ["NADA", "Lumbares", "Espalda", "Cuello", "Hombros", "Bíceps", "Tríceps", "Pecho", "Cuádriceps", "Rodillas"];
 const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
 const fmt1 = n => (Math.round(n * 10) / 10).toFixed(1);
 function ratedSessions(logs) {
@@ -679,7 +679,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.3.0";
+const APP_VERSION = "1.3.2";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -2204,7 +2204,14 @@ function PostSessionWizard({
     }
   }, [step]);
   function togglePain(area) {
-    setPain(prev => prev.includes(area) ? prev.filter(a => a !== area) : [...prev, area]);
+    if (area === "NADA") {
+      setPain(prev => prev.length === 1 && prev[0] === "NADA" ? [] : ["NADA"]);
+    } else {
+      setPain(prev => {
+        const withoutNada = prev.filter(a => a !== "NADA");
+        return withoutNada.includes(area) ? withoutNada.filter(a => a !== area) : [...withoutNada, area];
+      });
+    }
   }
   function finish() {
     onFinalize(sessionId, {
@@ -2212,7 +2219,7 @@ function PostSessionWizard({
       endurance,
       hardestMuscle: hardest,
       easiestMuscle: easiest,
-      painAreas: pain
+      painAreas: pain.filter(a => a !== "NADA")
     });
     onDone();
   }
@@ -2365,7 +2372,14 @@ function SessionEditScreen({
     setExercises(arr);
   }
   function togglePain(area) {
-    setPain(prev => prev.includes(area) ? prev.filter(a => a !== area) : [...prev, area]);
+    if (area === "NADA") {
+      setPain(prev => prev.length === 1 && prev[0] === "NADA" ? [] : ["NADA"]);
+    } else {
+      setPain(prev => {
+        const withoutNada = prev.filter(a => a !== "NADA");
+        return withoutNada.includes(area) ? withoutNada.filter(a => a !== area) : [...withoutNada, area];
+      });
+    }
   }
   async function handleSave() {
     setSaving(true);
@@ -2376,14 +2390,13 @@ function SessionEditScreen({
       endurance,
       hardestMuscle: hardest,
       easiestMuscle: easiest,
-      painAreas: pain
+      painAreas: pain.filter(a => a !== "NADA")
     });
     setSaving(false);
     onCancel();
   }
   async function handleDelete() {
     await onDelete(log.id);
-    onCancel();
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "pb-10"
@@ -3687,6 +3700,12 @@ function MainApp({
   const [customFoods, setCustomFoods] = useState(null);
   const [goals, setGoals] = useState(null);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  useEffect(() => {
+    if (!successMessage) return;
+    const t = setTimeout(() => setSuccessMessage(""), 3000);
+    return () => clearTimeout(t);
+  }, [successMessage]);
   const [tab, setTab] = useState("inicio");
   const [rutinasView, setRutinasView] = useState(null);
   useEffect(() => {
@@ -3967,6 +3986,12 @@ function MainApp({
       setError("No se pudo eliminar la sesión.");
     }
   }
+  async function deleteSessionAndGoHome(id) {
+    setRutinasView(null);
+    setTab("inicio");
+    await deleteSession(id);
+    setSuccessMessage("La sesión fue eliminada");
+  }
   async function wipeAll() {
     try {
       const [rSnap, sSnap, nSnap] = await Promise.all([db.collection("routines").where("ownerUid", "==", uid).get(), db.collection("sessions").where("ownerUid", "==", uid).get(), db.collection("nutrition").where("ownerUid", "==", uid).get()]);
@@ -4005,7 +4030,18 @@ function MainApp({
   }, /*#__PURE__*/React.createElement(Icon, {
     name: "x",
     size: 14
-  })))), loading ? /*#__PURE__*/React.createElement(LoadingScreen, null) : /*#__PURE__*/React.createElement("div", {
+  })))), successMessage && /*#__PURE__*/React.createElement("div", {
+    className: "px-4 pt-3"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "rounded-xl px-3 py-2 text-xs flex items-center gap-2",
+    style: {
+      background: "rgba(48,209,88,0.15)",
+      color: C.green
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "check",
+    size: 14
+  }), /*#__PURE__*/React.createElement("span", null, successMessage))), loading ? /*#__PURE__*/React.createElement(LoadingScreen, null) : /*#__PURE__*/React.createElement("div", {
     className: "pb-20"
   }, tab === "inicio" && /*#__PURE__*/React.createElement(HomeScreen, {
     userName: userName,
@@ -4070,7 +4106,7 @@ function MainApp({
     log: logs.find(l => l.id === rutinasView.sessionId),
     onCancel: () => setRutinasView(null),
     onSave: finalizeSessionExtras,
-    onDelete: deleteSession
+    onDelete: deleteSessionAndGoHome
   }), tab === "progreso" && /*#__PURE__*/React.createElement(ProgressFlow, {
     routines: routines,
     logs: logs,
