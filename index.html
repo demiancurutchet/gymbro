@@ -7,7 +7,7 @@
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
 <title>Gymbro</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23000000'/%3E%3Crect x='3' y='8' width='5' height='8' rx='1.5' fill='%232C6FFF'/%3E%3Crect x='16' y='8' width='5' height='8' rx='1.5' fill='%232C6FFF'/%3E%3Crect x='8' y='10.5' width='8' height='3' rx='1' fill='%232C6FFF'/%3E%3C/svg%3E" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23070C16'/%3E%3Crect x='3' y='8' width='5' height='8' rx='1.5' fill='%232C6FFF'/%3E%3Crect x='16' y='8' width='5' height='8' rx='1.5' fill='%232C6FFF'/%3E%3Crect x='8' y='10.5' width='8' height='3' rx='1' fill='%232C6FFF'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Agdasima:wght@400;700&display=swap" rel="stylesheet">
@@ -18,7 +18,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <style>
-  html, body { margin: 0; background: #000000; font-family: 'Agdasima', -apple-system, sans-serif; }
+  html, body { margin: 0; background: #070C16; font-family: 'Agdasima', -apple-system, sans-serif; }
   * { box-sizing: border-box; }
   input[type=number]::-webkit-outer-spin-button,
   input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -62,7 +62,7 @@ const db = firebase.firestore();
 // Design tokens
 // ---------------------------------------------------------------------------
 const C = {
-  bg: "#000000",
+  bg: "#070C16",
   surface: "#1C1C1E",
   surface2: "#2C2C2E",
   border: "rgba(255,255,255,0.09)",
@@ -694,7 +694,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.4.1";
+const APP_VERSION = "1.4.2";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1259,13 +1259,24 @@ function HomeScreen({
   const totalProtein = todayEntries.reduce((sum, e) => sum + (Number(e.protein) || 0), 0);
   const proteinPct = Math.min(100, Math.round(totalProtein / goals.proteinGoal * 100));
   return /*#__PURE__*/React.createElement("div", {
-    className: "px-4 pt-6 pb-10"
+    style: {
+      paddingBottom: 160
+    }
   }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-start justify-between mb-6"
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h1", {
+    className: "relative",
+    style: {
+      height: 600
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "absolute",
+      top: 80,
+      left: 24
+    }
+  }, /*#__PURE__*/React.createElement("h1", {
     className: "text-2xl font-bold tracking-tight",
     style: {
-      color: C.text
+      color: "#9F9F9F"
     }
   }, "Hola", userName ? `, ${userName}` : ""), /*#__PURE__*/React.createElement("p", {
     className: "text-xs font-bold uppercase mt-0.5",
@@ -1273,7 +1284,12 @@ function HomeScreen({
       color: C.textDim2
     }
   }, "Versión ", APP_VERSION)), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-1.5 pt-0.5"
+    style: {
+      position: "absolute",
+      top: 80,
+      right: 24
+    },
+    className: "flex items-center gap-1.5"
   }, /*#__PURE__*/React.createElement(Icon, {
     name: "calendar",
     size: 15,
@@ -1283,31 +1299,15 @@ function HomeScreen({
     style: {
       color: C.textDim
     }
-  }, fmtHomeDate(todayISO())))), trainedToday && /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2 rounded-2xl px-4 py-3 mb-5",
+  }, fmtHomeDate(todayISO()))), /*#__PURE__*/React.createElement("div", {
     style: {
-      background: "rgba(44,111,255,0.12)"
-    }
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "check",
-    size: 18,
-    color: C.green
-  }), /*#__PURE__*/React.createElement("span", {
-    className: "text-sm font-medium",
-    style: {
-      color: C.text
-    }
-  }, "Sesión de ejercicio registrada")), /*#__PURE__*/React.createElement("div", {
-    className: "relative mb-5",
-    style: {
-      minHeight: 230
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "absolute right-0 bottom-0 pointer-events-none select-none",
-    style: {
-      width: 165,
-      marginRight: -16
-    }
+      position: "absolute",
+      top: 190,
+      right: 0,
+      width: 210,
+      zIndex: 1
+    },
+    className: "pointer-events-none select-none"
   }, /*#__PURE__*/React.createElement("img", {
     src: MASCOT_IMG,
     alt: "",
@@ -1316,9 +1316,12 @@ function HomeScreen({
       display: "block"
     }
   })), /*#__PURE__*/React.createElement("div", {
-    className: "relative",
     style: {
-      maxWidth: "58%"
+      position: "absolute",
+      top: 230,
+      left: 24,
+      maxWidth: "54%",
+      zIndex: 2
     }
   }, /*#__PURE__*/React.createElement("p", {
     className: "font-bold uppercase leading-tight",
@@ -1335,6 +1338,22 @@ function HomeScreen({
       fontVariantNumeric: "tabular-nums"
     }
   }, monthDays))), /*#__PURE__*/React.createElement("div", {
+    className: "px-6"
+  }, trainedToday && /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 rounded-2xl px-4 py-3 mb-5",
+    style: {
+      background: "rgba(44,111,255,0.12)"
+    }
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "check",
+    size: 18,
+    color: C.green
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "text-sm font-medium",
+    style: {
+      color: C.text
+    }
+  }, "Sesión de ejercicio registrada")), /*#__PURE__*/React.createElement("div", {
     style: {
       height: 1,
       background: "rgba(255,255,255,0.12)"
@@ -1372,7 +1391,7 @@ function HomeScreen({
     style: {
       color: C.textDim
     }
-  }, " / ", goals.proteinGoal)), picking ? /*#__PURE__*/React.createElement("div", {
+  }, " / ", goals.proteinGoal)), picking && /*#__PURE__*/React.createElement("div", {
     className: "rounded-2xl p-4 mb-6 space-y-2",
     style: {
       background: C.surface,
@@ -1410,18 +1429,29 @@ function HomeScreen({
     style: {
       color: C.textDim
     }
-  }, "Cancelar")) : /*#__PURE__*/React.createElement("button", {
+  }, "Cancelar"))), !picking && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "fixed",
+      left: 24,
+      right: 24,
+      bottom: "calc(96px + env(safe-area-inset-bottom))",
+      zIndex: 20,
+      maxWidth: 528,
+      margin: "0 auto"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
     onClick: trainedToday ? () => onEditTodaySession(todaySession.id) : () => setPicking(true),
     className: "w-full flex items-center justify-center gap-2 rounded-full py-4 text-base font-bold",
     style: {
       background: C.green,
-      color: "#fff"
+      color: "#fff",
+      boxShadow: "-14px 61px 18px 0 rgba(44,111,255,0.00), -9px 39px 16px 0 rgba(44,111,255,0.01), -5px 22px 14px 0 rgba(44,111,255,0.05), -2px 10px 10px 0 rgba(44,111,255,0.09), -1px 2px 6px 0 rgba(44,111,255,0.10)"
     }
   }, /*#__PURE__*/React.createElement(Icon, {
     name: "dumbbell",
     size: 20,
     color: "#fff"
-  }), trainedToday ? "Editar sesión de hoy" : "Iniciar sesión de hoy"));
+  }), trainedToday ? "Editar sesión de hoy" : "Iniciar sesión de hoy")));
 }
 function RoutinesList({
   routines,
@@ -3657,7 +3687,7 @@ function BottomNav({
     size: 20,
     color: tab === k ? C.green : "rgba(255,255,255,0.5)"
   }), /*#__PURE__*/React.createElement("span", {
-    className: "text-xs font-medium",
+    className: "text-xs font-bold",
     style: {
       color: tab === k ? C.green : "rgba(255,255,255,0.5)"
     }
