@@ -710,7 +710,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.5.4";
+const APP_VERSION = "1.5.5";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -3180,8 +3180,9 @@ function NutritionScreen({
   const [goalProteinInput, setGoalProteinInput] = useState(goals.proteinGoal);
   const [goalCarbsInput, setGoalCarbsInput] = useState(goals.carbsGoal || "");
   const [showAllFoods, setShowAllFoods] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(todayISO());
   const today = todayISO();
-  const todayEntries = entries.filter(e => e.date === today);
+  const todayEntries = entries.filter(e => e.date === selectedDate);
   const totalProtein = todayEntries.reduce((sum, e) => sum + (Number(e.protein) || 0), 0);
   const totalCarbs = todayEntries.reduce((sum, e) => sum + (Number(e.carbs) || 0), 0);
   const pct = Math.min(100, Math.round(totalProtein / goals.proteinGoal * 100));
@@ -3225,7 +3226,7 @@ function NutritionScreen({
   function addCustom() {
     const n = customName.trim();
     if (!n || !customProtein) return;
-    onAdd(n, Number(customProtein), Number(customCarbs) || 0);
+    onAdd(n, Number(customProtein), Number(customCarbs) || 0, selectedDate);
     onSaveCustomFood(n, Number(customProtein), Number(customCarbs) || 0);
     setCustomName("");
     setCustomProtein(10);
@@ -3261,11 +3262,33 @@ function NutritionScreen({
       color: C.blue
     }
   }, editingGoals ? "Listo" : "Metas")), /*#__PURE__*/React.createElement("p", {
-    className: "text-sm mb-5",
+    className: "text-sm mb-3",
     style: {
       color: C.textDim
     }
-  }, "Meta de proteína: ", goals.proteinGoal, " g", goals.carbsGoal ? ` · Meta de carbos: ${goals.carbsGoal} g` : ""), editingGoals && /*#__PURE__*/React.createElement("div", {
+  }, "Meta de proteína: ", goals.proteinGoal, " g", goals.carbsGoal ? ` · Meta de carbos: ${goals.carbsGoal} g` : ""), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between rounded-2xl px-4 py-3 mb-5",
+    style: {
+      background: C.surface,
+      border: `1px solid ${C.border}`
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-sm font-medium",
+    style: {
+      color: C.text
+    }
+  }, selectedDate === today ? "Registrando: hoy" : `Registrando: ${fmtFull(selectedDate)}`), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: selectedDate,
+    max: today,
+    onChange: e => setSelectedDate(e.target.value),
+    className: "bg-transparent text-sm outline-none",
+    style: {
+      color: C.text,
+      colorScheme: "dark",
+      fontVariantNumeric: "tabular-nums"
+    }
+  })), editingGoals && /*#__PURE__*/React.createElement("div", {
     className: "rounded-2xl p-4 mb-5 space-y-3",
     style: {
       background: C.surface,
@@ -3362,7 +3385,7 @@ function NutritionScreen({
     className: "flex gap-2 overflow-x-auto no-scrollbar pb-1"
   }, recentFoods.map(f => /*#__PURE__*/React.createElement("button", {
     key: f.name,
-    onClick: () => onAdd(f.name, f.protein, f.carbs),
+    onClick: () => onAdd(f.name, f.protein, f.carbs, selectedDate),
     className: "shrink-0 rounded-full px-3 py-2 text-xs font-medium",
     style: {
       background: C.surface2,
@@ -3437,7 +3460,7 @@ function NutritionScreen({
         color: C.blue
       }
     }, f.carbs, " g carbos"))), /*#__PURE__*/React.createElement("button", {
-      onClick: () => onRemoveOne(f.name),
+      onClick: () => onRemoveOne(f.name, selectedDate),
       className: "w-7 h-7 shrink-0 rounded-full flex items-center justify-center",
       style: {
         background: C.surface2,
@@ -3453,7 +3476,7 @@ function NutritionScreen({
         fontVariantNumeric: "tabular-nums"
       }
     }, count), /*#__PURE__*/React.createElement("button", {
-      onClick: () => onAdd(f.name, f.protein, f.carbs),
+      onClick: () => onAdd(f.name, f.protein, f.carbs, selectedDate),
       className: "w-7 h-7 shrink-0 rounded-full flex items-center justify-center",
       style: {
         background: C.green,
@@ -3533,13 +3556,13 @@ function NutritionScreen({
     style: {
       color: C.textDim
     }
-  }, "Hoy"), todayEntries.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
+  }, selectedDate === today ? "Hoy" : fmtFull(selectedDate)), todayEntries.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
     icon: /*#__PURE__*/React.createElement(Icon, {
       name: "apple",
       size: 22,
       color: C.green
     }),
-    title: "Todavía no registraste nada hoy"
+    title: selectedDate === today ? "Todavía no registraste nada hoy" : "No registraste nada ese día"
   }) : /*#__PURE__*/React.createElement("div", {
     className: "space-y-2"
   }, todayEntries.map(e => editingId === e.id ? /*#__PURE__*/React.createElement("div", {
@@ -3905,12 +3928,13 @@ function MainApp({
       setError("No se pudo recuperar: " + (e.message || e));
     }
   }
-  async function addFood(name, protein, carbs) {
+  async function addFood(name, protein, carbs, date) {
+    const entryDate = date || todayISO();
     try {
       const loggedAt = new Date().toISOString();
       const ref = await db.collection("nutrition").add({
         ownerUid: uid,
-        date: todayISO(),
+        date: entryDate,
         name,
         protein,
         carbs: carbs || 0,
@@ -3919,7 +3943,7 @@ function MainApp({
       });
       setNutrition(prev => [...(prev || []), {
         id: ref.id,
-        date: todayISO(),
+        date: entryDate,
         name,
         protein,
         carbs: carbs || 0,
@@ -3948,9 +3972,9 @@ function MainApp({
       setError("No se pudo actualizar el alimento.");
     }
   }
-  function removeOneFoodEntry(name) {
-    const today = todayISO();
-    const candidates = (nutrition || []).filter(n => n.date === today && n.name === name);
+  function removeOneFoodEntry(name, date) {
+    const targetDate = date || todayISO();
+    const candidates = (nutrition || []).filter(n => n.date === targetDate && n.name === name);
     if (candidates.length === 0) return;
     removeFood(candidates[candidates.length - 1].id);
   }
