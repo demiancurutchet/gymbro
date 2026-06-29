@@ -717,7 +717,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.6.1";
+const APP_VERSION = "1.7.0";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -816,6 +816,218 @@ const FOODS = [{
   protein: 8,
   carbs: 50
 }];
+
+// Rough per-100g (or typical-serving) protein/carbs estimates, matched by keyword
+// against whatever the user types in "Otro alimento". Approximate, editable after.
+const NUTRITION_GUESS = [{
+  kw: ["pechuga de pollo", "pechuga"],
+  protein: 31,
+  carbs: 0
+}, {
+  kw: ["pollo"],
+  protein: 27,
+  carbs: 0
+}, {
+  kw: ["milanesa de pollo"],
+  protein: 25,
+  carbs: 10
+}, {
+  kw: ["milanesa de carne"],
+  protein: 24,
+  carbs: 10
+}, {
+  kw: ["milanesa"],
+  protein: 24,
+  carbs: 10
+}, {
+  kw: ["bife de chorizo", "bife"],
+  protein: 27,
+  carbs: 0
+}, {
+  kw: ["asado", "carne vacuna", "lomo", "carne picada", "carne"],
+  protein: 26,
+  carbs: 0
+}, {
+  kw: ["cerdo", "chuleta"],
+  protein: 27,
+  carbs: 0
+}, {
+  kw: ["jamon", "jamón"],
+  protein: 21,
+  carbs: 1
+}, {
+  kw: ["pavo"],
+  protein: 29,
+  carbs: 0
+}, {
+  kw: ["merluza", "pescado blanco", "pescado"],
+  protein: 21,
+  carbs: 0
+}, {
+  kw: ["atun", "atún"],
+  protein: 26,
+  carbs: 0
+}, {
+  kw: ["salmon", "salmón"],
+  protein: 24,
+  carbs: 0
+}, {
+  kw: ["camaron", "camarón", "langostino", "gamba"],
+  protein: 24,
+  carbs: 0
+}, {
+  kw: ["huevo"],
+  protein: 13,
+  carbs: 1
+}, {
+  kw: ["tofu"],
+  protein: 8,
+  carbs: 2
+}, {
+  kw: ["queso crema"],
+  protein: 6,
+  carbs: 4
+}, {
+  kw: ["queso"],
+  protein: 25,
+  carbs: 2
+}, {
+  kw: ["ricota"],
+  protein: 11,
+  carbs: 3
+}, {
+  kw: ["yogur griego", "yogurt griego"],
+  protein: 9,
+  carbs: 4
+}, {
+  kw: ["yogur", "yogurt"],
+  protein: 4,
+  carbs: 6
+}, {
+  kw: ["leche"],
+  protein: 3,
+  carbs: 5
+}, {
+  kw: ["arroz"],
+  protein: 3,
+  carbs: 28
+}, {
+  kw: ["fideos", "tallarines", "ñoquis", "noquis", "pasta"],
+  protein: 5,
+  carbs: 25
+}, {
+  kw: ["pan integral"],
+  protein: 9,
+  carbs: 41
+}, {
+  kw: ["pan"],
+  protein: 9,
+  carbs: 49
+}, {
+  kw: ["papa", "patata"],
+  protein: 2,
+  carbs: 17
+}, {
+  kw: ["batata", "boniato"],
+  protein: 1.5,
+  carbs: 20
+}, {
+  kw: ["avena"],
+  protein: 13,
+  carbs: 60
+}, {
+  kw: ["quinoa"],
+  protein: 4,
+  carbs: 21
+}, {
+  kw: ["lenteja"],
+  protein: 9,
+  carbs: 20
+}, {
+  kw: ["garbanzo"],
+  protein: 9,
+  carbs: 27
+}, {
+  kw: ["poroto", "frijol"],
+  protein: 9,
+  carbs: 23
+}, {
+  kw: ["banana", "platano", "plátano"],
+  protein: 1,
+  carbs: 23
+}, {
+  kw: ["manzana"],
+  protein: 0.3,
+  carbs: 14
+}, {
+  kw: ["naranja"],
+  protein: 1,
+  carbs: 12
+}, {
+  kw: ["palta", "aguacate"],
+  protein: 2,
+  carbs: 9
+}, {
+  kw: ["almendra"],
+  protein: 21,
+  carbs: 22
+}, {
+  kw: ["mani", "maní", "cacahuate"],
+  protein: 25,
+  carbs: 16
+}, {
+  kw: ["nuez", "nueces"],
+  protein: 15,
+  carbs: 14
+}, {
+  kw: ["manteca de mani", "crema de mani"],
+  protein: 25,
+  carbs: 20
+}, {
+  kw: ["hamburguesa"],
+  protein: 20,
+  carbs: 5
+}, {
+  kw: ["pizza"],
+  protein: 11,
+  carbs: 33
+}, {
+  kw: ["empanada"],
+  protein: 9,
+  carbs: 25
+}, {
+  kw: ["ensalada"],
+  protein: 2,
+  carbs: 8
+}, {
+  kw: ["proteina", "proteína", "whey"],
+  protein: 24,
+  carbs: 3
+}];
+function normalizeForMatch(s) {
+  return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+function guessNutrition(name) {
+  const n = normalizeForMatch(name || "");
+  if (!n.trim()) return null;
+  let best = null;
+  for (const entry of NUTRITION_GUESS) {
+    for (const kw of entry.kw) {
+      const nkw = normalizeForMatch(kw);
+      if (n.includes(nkw) && (!best || nkw.length > best.matchLen)) {
+        best = {
+          protein: entry.protein,
+          carbs: entry.carbs,
+          matchLen: nkw.length
+        };
+      }
+    }
+  }
+  return best ? {
+    protein: best.protein,
+    carbs: best.carbs
+  } : null;
+}
 function parseLocaleNumber(str) {
   if (str === "" || str == null) return null;
   const n = Number(String(str).replace(",", "."));
@@ -3195,6 +3407,7 @@ function NutritionScreen({
   const [customName, setCustomName] = useState("");
   const [customProtein, setCustomProtein] = useState(10);
   const [customCarbs, setCustomCarbs] = useState(0);
+  const [guessNotFound, setGuessNotFound] = useState(false);
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
@@ -3247,6 +3460,16 @@ function NutritionScreen({
     });
     return out.slice(0, 10);
   })();
+  function estimateNutrition() {
+    const guess = guessNutrition(customName);
+    if (guess) {
+      setCustomProtein(guess.protein);
+      setCustomCarbs(guess.carbs);
+      setGuessNotFound(false);
+    } else {
+      setGuessNotFound(true);
+    }
+  }
   function addCustom() {
     const n = customName.trim();
     if (!n || !customProtein) return;
@@ -3532,14 +3755,28 @@ function NutritionScreen({
   }, /*#__PURE__*/React.createElement("input", {
     autoFocus: true,
     value: customName,
-    onChange: e => setCustomName(e.target.value),
+    onChange: e => {
+      setCustomName(e.target.value);
+      setGuessNotFound(false);
+    },
     placeholder: "Nombre del alimento",
     className: "w-full bg-transparent outline-none text-sm pb-2",
     style: {
       color: C.text,
       borderBottom: `1px solid ${C.border}`
     }
-  }), /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: estimateNutrition,
+    className: "text-xs font-medium",
+    style: {
+      color: C.blue
+    }
+  }, "Calcular automáticamente"), guessNotFound && /*#__PURE__*/React.createElement("p", {
+    className: "text-xs",
+    style: {
+      color: C.textDim
+    }
+  }, "No pude estimarlo — ingresalo a mano abajo."), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center gap-2"
   }, /*#__PURE__*/React.createElement(NumField, {
     label: "Proteína (g)",
