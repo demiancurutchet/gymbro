@@ -717,7 +717,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.7.1";
+const APP_VERSION = "1.7.2";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1274,6 +1274,36 @@ function DualLineChart({
 // ---------------------------------------------------------------------------
 // Exercise plan editor
 // ---------------------------------------------------------------------------
+// Collapse consecutive normal sets with same reps+weight into groups for the custom editor
+function setsToGroups(sets) {
+  const groups = [];
+  sets.forEach(s => {
+    if (s.type !== "normal") return;
+    const last = groups[groups.length - 1];
+    if (last && last.reps === s.reps && last.weight === s.weight) {
+      last.count++;
+      last.ids.push(s.id);
+    } else {
+      groups.push({
+        id: uid(),
+        count: 1,
+        reps: s.reps,
+        weight: s.weight,
+        ids: [s.id]
+      });
+    }
+  });
+  return groups;
+}
+function groupsToSets(groups) {
+  const result = [];
+  groups.forEach(g => {
+    for (let i = 0; i < Math.max(1, g.count); i++) {
+      result.push(makeNormalSet(g.reps, g.weight));
+    }
+  });
+  return result;
+}
 function ExercisePlanEditor({
   sets,
   onChange,
@@ -1282,7 +1312,45 @@ function ExercisePlanEditor({
 }) {
   const base = getBase(sets);
   const count = sets.length;
-  const weightLabel = bodyweight ? "Peso adicional (kg)" : "Peso (kg)";
+  const weightLabel = bodyweight ? "Peso adic. (kg)" : "Peso (kg)";
+  const normalSets = sets.filter(s => s.type === "normal");
+  const isUniform = normalSets.length === 0 || normalSets.every(s => s.reps === normalSets[0].reps && s.weight === normalSets[0].weight);
+  const [custom, setCustom] = useState(false);
+  const [groups, setGroups] = useState(() => setsToGroups(sets.filter(s => s.type === "normal")));
+  const dropSets = sets.filter(s => s.type === "drop");
+  function enterCustom() {
+    setGroups(setsToGroups(sets.filter(s => s.type === "normal")));
+    setCustom(true);
+  }
+  function exitCustom() {
+    setCustom(false);
+    const normalExpanded = groupsToSets(groups);
+    onChange([...normalExpanded, ...dropSets]);
+  }
+  function updateGroups(next) {
+    setGroups(next);
+    onChange([...groupsToSets(next), ...dropSets]);
+  }
+  function addGroup() {
+    updateGroups([...groups, {
+      id: uid(),
+      count: 1,
+      reps: base.reps || 10,
+      weight: base.weight || 0,
+      ids: []
+    }]);
+  }
+  function removeGroup(i) {
+    if (groups.length > 1) updateGroups(groups.filter((_, idx) => idx !== i));
+  }
+  function updateGroup(i, fields) {
+    const g = groups.slice();
+    g[i] = {
+      ...g[i],
+      ...fields
+    };
+    updateGroups(g);
+  }
   function changeCount(next) {
     onChange(resizeSets(sets, Math.max(1, Math.min(12, next)), base));
   }
@@ -1359,7 +1427,7 @@ function ExercisePlanEditor({
     style: {
       color: C.textDim
     }
-  }, "Con peso propio")), /*#__PURE__*/React.createElement("div", {
+  }, "Con peso propio")), !custom ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between rounded-xl px-3 py-2.5",
     style: {
       background: C.surface2
@@ -1400,7 +1468,7 @@ function ExercisePlanEditor({
   })))), /*#__PURE__*/React.createElement("div", {
     className: "flex gap-2"
   }, /*#__PURE__*/React.createElement(NumField, {
-    label: "Reps por serie",
+    label: "Reps",
     value: base.reps,
     onChange: changeReps
   }), /*#__PURE__*/React.createElement(NumField, {
@@ -1408,7 +1476,88 @@ function ExercisePlanEditor({
     value: base.weight,
     step: 0.5,
     onChange: changeWeight
-  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+  })), /*#__PURE__*/React.createElement("button", {
+    onClick: enterCustom,
+    className: "text-xs font-medium",
+    style: {
+      color: C.blue
+    }
+  }, "Series distintas →")) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "space-y-2"
+  }, groups.map((g, i) => /*#__PURE__*/React.createElement("div", {
+    key: g.id,
+    className: "flex items-end gap-2"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 52
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "text-xs block mb-1",
+    style: {
+      color: C.textDim2
+    }
+  }, "Cant."), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-1 rounded-xl px-2 py-2",
+    style: {
+      background: C.surface2
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => updateGroup(i, {
+      count: Math.max(1, g.count - 1)
+    }),
+    style: {
+      color: C.textDim,
+      lineHeight: 1
+    }
+  }, "−"), /*#__PURE__*/React.createElement("span", {
+    className: "flex-1 text-center text-sm font-semibold",
+    style: {
+      color: C.text,
+      fontVariantNumeric: "tabular-nums"
+    }
+  }, g.count), /*#__PURE__*/React.createElement("button", {
+    onClick: () => updateGroup(i, {
+      count: g.count + 1
+    }),
+    style: {
+      color: C.textDim,
+      lineHeight: 1
+    }
+  }, "+"))), /*#__PURE__*/React.createElement(NumField, {
+    label: "Reps",
+    value: g.reps,
+    onChange: v => updateGroup(i, {
+      reps: v
+    })
+  }), /*#__PURE__*/React.createElement(NumField, {
+    label: weightLabel,
+    value: g.weight,
+    step: 0.5,
+    onChange: v => updateGroup(i, {
+      weight: v
+    })
+  }), groups.length > 1 && /*#__PURE__*/React.createElement("button", {
+    onClick: () => removeGroup(i),
+    className: "mb-2 shrink-0"
+  }, /*#__PURE__*/React.createElement(Icon, {
+    name: "x",
+    size: 14,
+    color: C.textDim
+  }))))), /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: addGroup,
+    className: "text-xs font-medium",
+    style: {
+      color: C.blue
+    }
+  }, "+ Agregar grupo"), /*#__PURE__*/React.createElement("button", {
+    onClick: exitCustom,
+    className: "text-xs",
+    style: {
+      color: C.textDim
+    }
+  }, "← Modo simple"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     className: "text-xs mb-2",
     style: {
       color: C.textDim
@@ -1426,7 +1575,7 @@ function ExercisePlanEditor({
       background: C.surface2,
       color: C.textDim
     }
-  }, "Serie ", idx + 1, s.type === "drop" ? " · drop" : "")))), sets.map((s, idx) => s.type === "drop" && /*#__PURE__*/React.createElement("div", {
+  }, idx + 1, s.type === "drop" ? " drop" : "")))), sets.map((s, idx) => s.type === "drop" && /*#__PURE__*/React.createElement("div", {
     key: s.id,
     className: "rounded-xl p-3",
     style: {
@@ -1437,7 +1586,7 @@ function ExercisePlanEditor({
     style: {
       color: C.orange
     }
-  }, "Serie ", idx + 1, " · bajadas del drop set"), /*#__PURE__*/React.createElement("div", {
+  }, "Serie ", idx + 1, " · bajadas"), /*#__PURE__*/React.createElement("div", {
     className: "space-y-2"
   }, s.drops.map((d, di) => /*#__PURE__*/React.createElement("div", {
     key: d.id,
