@@ -717,7 +717,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.7.2";
+const APP_VERSION = "1.8.0";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -2455,7 +2455,7 @@ function RoutineDetail({
       color: C.textDim
     }
   }, "¿Eliminar esta rutina?", " ", /*#__PURE__*/React.createElement("button", {
-    onClick: onDelete,
+    onClick: () => { if (window.confirm("¿Eliminar esta rutina? Esta acción no se puede deshacer.")) onDelete(); },
     className: "font-semibold",
     style: {
       color: C.red
@@ -3612,13 +3612,12 @@ function NutritionScreen({
     const sorted = entries.slice().sort((a, b) => (b.loggedAt || "").localeCompare(a.loggedAt || ""));
     const seen = new Set();
     const out = [];
-    sorted.forEach(e => {
-      if (!seen.has(e.name)) {
-        seen.add(e.name);
-        out.push(e);
-      }
+    sorted.forEach(e => { if (!seen.has(e.name)) { seen.add(e.name); out.push(e); } });
+    // Also include custom foods not yet logged, at the end
+    (customFoods || []).forEach(f => {
+      if (!seen.has(f.name)) { seen.add(f.name); out.push({ name: f.name, protein: f.protein, carbs: f.carbs, loggedAt: "" }); }
     });
-    return out.slice(0, 10);
+    return out.slice(0, 12);
   })();
   function estimateNutrition() {
     const guess = guessNutrition(customName);
@@ -4339,56 +4338,39 @@ function MainApp({
   async function loadAll() {
     try {
       await migrateLegacyData(uid);
-      const [rSnap, sSnap, nSnap, settingsDoc] = await Promise.all([db.collection("routines").where("ownerUid", "==", uid).get(), db.collection("sessions").where("ownerUid", "==", uid).get(), db.collection("nutrition").where("ownerUid", "==", uid).get(), db.collection("settings").doc(uid).get()]);
-      const loadedRoutines = rSnap.docs.map(d => ({
-        id: d.id,
-        name: d.data().name,
-        exercises: d.data().exercises || [],
-        order: d.data().order
-      }));
-      loadedRoutines.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
-      setRoutines(loadedRoutines);
+      // Phase 1: data needed for Home — sessions, nutrition, settings
+      const [sSnap, nSnap, settingsDoc] = await Promise.all([
+        db.collection("sessions").where("ownerUid", "==", uid).get(),
+        db.collection("nutrition").where("ownerUid", "==", uid).get(),
+        db.collection("settings").doc(uid).get(),
+      ]);
       setLogs(sSnap.docs.map(d => ({
-        id: d.id,
-        routineId: d.data().routineId,
-        routineName: d.data().routineName,
-        date: d.data().date,
-        exercises: d.data().exercises || [],
-        strength: d.data().strength,
-        endurance: d.data().endurance,
-        startedAt: d.data().startedAt,
-        endedAt: d.data().endedAt,
-        hardestMuscle: d.data().hardestMuscle,
-        easiestMuscle: d.data().easiestMuscle,
+        id: d.id, routineId: d.data().routineId, routineName: d.data().routineName,
+        date: d.data().date, exercises: d.data().exercises || [],
+        strength: d.data().strength, endurance: d.data().endurance,
+        startedAt: d.data().startedAt, endedAt: d.data().endedAt,
+        hardestMuscle: d.data().hardestMuscle, easiestMuscle: d.data().easiestMuscle,
         painAreas: d.data().painAreas || []
       })));
       setNutrition(nSnap.docs.map(d => ({
-        id: d.id,
-        date: d.data().date,
-        name: d.data().name,
-        protein: d.data().protein,
-        carbs: d.data().carbs,
-        loggedAt: d.data().loggedAt
+        id: d.id, date: d.data().date, name: d.data().name,
+        protein: d.data().protein, carbs: d.data().carbs, loggedAt: d.data().loggedAt
       })));
       const settings = settingsDoc.exists ? settingsDoc.data() : {};
+      setGoals({ proteinGoal: settings.proteinGoal || DEFAULT_PROTEIN_GOAL, carbsGoal: settings.carbsGoal || null });
+      setGapDismissedAt(settings.nutritionGapDismissedAt || null);
+      // Phase 2: routines + food settings (background, non-blocking)
+      const rSnap = await db.collection("routines").where("ownerUid", "==", uid).get();
+      const loadedRoutines = rSnap.docs.map(d => ({ id: d.id, name: d.data().name, exercises: d.data().exercises || [], order: d.data().order }));
+      loadedRoutines.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
+      setRoutines(loadedRoutines);
       setHiddenFoods(settings.hiddenFoods || []);
       setCustomFoods(settings.customFoods || []);
-      setGoals({
-        proteinGoal: settings.proteinGoal || DEFAULT_PROTEIN_GOAL,
-        carbsGoal: settings.carbsGoal || null
-      });
-      setGapDismissedAt(settings.nutritionGapDismissedAt || null);
     } catch (e) {
       setError("No se pudieron cargar los datos: " + (e.message || e));
-      setRoutines([]);
-      setLogs([]);
-      setNutrition([]);
-      setHiddenFoods([]);
-      setCustomFoods([]);
-      setGoals({
-        proteinGoal: DEFAULT_PROTEIN_GOAL,
-        carbsGoal: null
-      });
+      setRoutines([]); setLogs([]); setNutrition([]);
+      setHiddenFoods([]); setCustomFoods([]);
+      setGoals({ proteinGoal: DEFAULT_PROTEIN_GOAL, carbsGoal: null });
     }
   }
   async function reclaimAllData() {
@@ -4656,7 +4638,7 @@ function MainApp({
       setError("No se pudo borrar todo.");
     }
   }
-  const loading = routines === null || logs === null || nutrition === null || hiddenFoods === null || goals === null || customFoods === null;
+  const loading = logs === null || nutrition === null || goals === null;
   const inSession = tab === "rutinas" && (rutinasView?.type === "session" || rutinasView?.type === "editSession");
   const todaySession = !loading ? logs.find(l => l.date === todayISO()) || null : null;
   return /*#__PURE__*/React.createElement("div", {
