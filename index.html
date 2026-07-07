@@ -720,7 +720,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.8.1";
+const APP_VERSION = "1.8.3";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1645,6 +1645,17 @@ function HomeScreen({
 }) {
   const [picking, setPicking] = useState(false);
   const trainedToday = !!todaySession;
+  // Check if there's a session draft in progress for any routine
+  const sessionInProgress = (() => {
+    try {
+      for (const r of routines || []) {
+        const key = "gymbro_draft_" + r.id;
+        const d = JSON.parse(localStorage.getItem(key) || "null");
+        if (d && d.date === todayISO()) return { routineId: r.id, routineName: r.name, completed: d.completed || [] };
+      }
+    } catch(e) {}
+    return null;
+  })();
   const monthDays = new Set(logs.filter(l => isInCurrentCalendarMonth(l.date)).map(l => l.date)).size;
   const todayEntries = (nutrition || []).filter(e => e.date === todayISO());
   const totalProtein = todayEntries.reduce((sum, e) => sum + (Number(e.protein) || 0), 0);
@@ -1868,7 +1879,7 @@ function HomeScreen({
       margin: "0 auto"
     }
   }, /*#__PURE__*/React.createElement("button", {
-    onClick: trainedToday ? () => onEditTodaySession(todaySession.id) : () => setPicking(true),
+    onClick: sessionInProgress ? () => onStartSession(sessionInProgress.routineId) : trainedToday ? () => onEditTodaySession(todaySession.id) : () => setPicking(true),
     className: "w-full flex items-center justify-center gap-2 rounded-full py-4 text-base font-bold",
     style: {
       background: C.green,
@@ -1876,10 +1887,10 @@ function HomeScreen({
       boxShadow: "-14px 61px 18px 0 rgba(44,111,255,0.00), -9px 39px 16px 0 rgba(44,111,255,0.01), -5px 22px 14px 0 rgba(44,111,255,0.05), -2px 10px 10px 0 rgba(44,111,255,0.09), -1px 2px 6px 0 rgba(44,111,255,0.10)"
     }
   }, /*#__PURE__*/React.createElement(Icon, {
-    name: trainedToday ? "pencil" : "dumbbell",
+    name: sessionInProgress ? "dumbbell" : trainedToday ? "pencil" : "dumbbell",
     size: 20,
     color: "#fff"
-  }), trainedToday ? "Editar sesión de hoy" : "Iniciar sesión de hoy")));
+  }), sessionInProgress ? ("Continuar sesión · " + sessionInProgress.routineName) : trainedToday ? "Editar sesión de hoy" : "Iniciar sesión de hoy")));
 }
 function RoutinesList({
   routines,
@@ -2487,26 +2498,46 @@ function SessionScreen({
   onFinalize,
   onDone
 }) {
-  const [date, setDate] = useState(todayISO());
-  const [exercises, setExercises] = useState(() => routine.exercises.map(cloneExerciseForSession));
-  const [startedAt] = useState(() => new Date().toISOString());
+  const DRAFT_KEY = "gymbro_draft_" + routine.id;
+  const loadDraft = () => {
+    try {
+      const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || "null");
+      if (d && d.date === todayISO()) return d;
+    } catch(e) {}
+    return null;
+  };
+  const draft = loadDraft();
+  const [date, setDate] = useState(draft ? draft.date : todayISO());
+  const [exercises, setExercises] = useState(() => draft ? draft.exercises : routine.exercises.map(cloneExerciseForSession));
+  const [startedAt] = useState(() => draft ? draft.startedAt : new Date().toISOString());
   const [focusedIndex, setFocusedIndex] = useState(null);
-  const [completed, setCompleted] = useState(() => new Set());
+  const [completed, setCompleted] = useState(() => draft ? new Set(draft.completed) : new Set());
   const [saving, setSaving] = useState(false);
   const [savedId, setSavedId] = useState(null);
+  const [resumedFromDraft] = useState(!!draft);
   const allDone = exercises.length > 0 && completed.size === exercises.length;
+
+  const saveDraft = (exs, comp, sa) => {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({
+        date: todayISO(), exercises: exs, startedAt: sa,
+        completed: [...comp], savedAt: new Date().toISOString()
+      }));
+    } catch(e) {}
+  };
+  const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch(e) {} };
+
   function updateExSets(idx, sets) {
     const arr = exercises.slice();
-    arr[idx] = {
-      ...arr[idx],
-      sets
-    };
+    arr[idx] = { ...arr[idx], sets };
     setExercises(arr);
+    saveDraft(arr, completed, startedAt);
   }
   function markDone(idx) {
     setCompleted(prev => {
       const next = new Set(prev);
       next.add(idx);
+      saveDraft(exercises, next, startedAt);
       return next;
     });
     setFocusedIndex(null);
@@ -2522,7 +2553,7 @@ function SessionScreen({
       endedAt: new Date().toISOString()
     });
     setSaving(false);
-    if (saved) setSavedId(saved.id);
+    if (saved) { clearDraft(); setSavedId(saved.id); }
   }
   if (savedId) {
     return /*#__PURE__*/React.createElement(PostSessionWizard, {
@@ -2579,7 +2610,14 @@ function SessionScreen({
     }))
   }), /*#__PURE__*/React.createElement("div", {
     className: "px-4 pt-5"
-  }, /*#__PURE__*/React.createElement("div", {
+  }, resumedFromDraft && /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 rounded-xl px-3 py-2 mb-3",
+    style: { background: "rgba(44,111,255,0.12)" }
+  }, /*#__PURE__*/React.createElement(Icon, { name: "check", size: 14, color: C.green }),
+    /*#__PURE__*/React.createElement("span", { className: "text-xs font-medium", style: { color: C.text } },
+      "Sesión recuperada automáticamente — tus ejercicios completados siguen marcados"
+    )
+  ), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between mb-2 rounded-2xl px-4 py-3",
     style: {
       background: C.surface,
@@ -4362,13 +4400,13 @@ function MainApp({
       const settings = settingsDoc.exists ? settingsDoc.data() : {};
       setGoals({ proteinGoal: settings.proteinGoal || DEFAULT_PROTEIN_GOAL, carbsGoal: settings.carbsGoal || null });
       setGapDismissedAt(settings.nutritionGapDismissedAt || null);
-      // Phase 2: routines + food settings (background, non-blocking)
+      setHiddenFoods(settings.hiddenFoods || []);
+      setCustomFoods(settings.customFoods || []);
+      // Phase 2: routines (background, non-blocking)
       const rSnap = await db.collection("routines").where("ownerUid", "==", uid).get();
       const loadedRoutines = rSnap.docs.map(d => ({ id: d.id, name: d.data().name, exercises: d.data().exercises || [], order: d.data().order }));
       loadedRoutines.sort((a, b) => (a.order ?? Infinity) - (b.order ?? Infinity));
       setRoutines(loadedRoutines);
-      setHiddenFoods(settings.hiddenFoods || []);
-      setCustomFoods(settings.customFoods || []);
     } catch (e) {
       setError("No se pudieron cargar los datos: " + (e.message || e));
       setRoutines([]); setLogs([]); setNutrition([]);
