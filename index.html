@@ -720,7 +720,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.8.3";
+const APP_VERSION = "1.8.4";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1712,9 +1712,10 @@ function HomeScreen({
     style: {
       position: "absolute",
       top: 142,
-      right: 0,
-      width: 210,
-      zIndex: 1
+      right: -10,
+      width: 220,
+      zIndex: 1,
+      overflow: "hidden"
     },
     className: "pointer-events-none select-none md:hidden"
   }, /*#__PURE__*/React.createElement("img", {
