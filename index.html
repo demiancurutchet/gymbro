@@ -376,6 +376,7 @@ function weekdayInsights(sessions) {
     if (Math.abs(diff) < 1.5) return;
     const better = diff > 0;
     out.push({
+      id: "weekday-" + day,
       title: `Los ${WEEKDAY_NAMES[day]} rendís ${better ? "mejor" : "peor"} que el promedio`,
       desc: `Fuerza ${fmt1(s)} y resistencia ${fmt1(e)}, contra ${fmt1(overallS)} y ${fmt1(overallE)} en el resto de los días.`,
       n: list.length,
@@ -401,6 +402,7 @@ function restGapInsight(sessions, gapDays = 5) {
   const eDelta = avg(drops.map(d => d.eDelta));
   if (sDelta > -0.8 && eDelta > -0.8) return null;
   return {
+    id: "restgap",
     title: `Los parates de más de ${gapDays} días te afectan`,
     desc: `Cuando volvés después de más de ${gapDays} días sin entrenar, tu fuerza cae en promedio ${fmt1(Math.abs(sDelta))} puntos y tu resistencia ${fmt1(Math.abs(eDelta))}, comparado con tu última sesión antes del parate.`,
     n: drops.length,
@@ -421,6 +423,7 @@ function trendInsight(sessions) {
   if (Math.abs(diff) < 1.2) return null;
   const improving = diff > 0;
   return {
+    id: 'trend',
     title: improving ? "Venís mejorando con el tiempo" : "Tu rendimiento viene en baja",
     desc: `Tus primeras sesiones registradas promediaban fuerza ${fmt1(fS)} y resistencia ${fmt1(fE)}. Tus últimas, ${fmt1(lS)} y ${fmt1(lE)}.`,
     n: sorted.length,
@@ -446,6 +449,7 @@ function routineInsight(sessions) {
     worst = stats[stats.length - 1];
   if (best.s + best.e - (worst.s + worst.e) < 1.5) return null;
   return {
+    id: "routine-" + best.name,
     title: `"${best.name}" te rinde mejor que "${worst.name}"`,
     desc: `En "${best.name}" promediás fuerza ${fmt1(best.s)} / resistencia ${fmt1(best.e)}. En "${worst.name}", ${fmt1(worst.s)} / ${fmt1(worst.e)}.`,
     n: best.n + worst.n,
@@ -467,6 +471,7 @@ function proteinGoalInsight(sessions, nutrition, proteinGoal) {
   const diff = sR + eR - (sN + eN);
   if (Math.abs(diff) < 1.2) return null;
   return {
+    id: "protein",
     title: `Llegar a los ${proteinGoal}g de proteína parece importar`,
     desc: `Los días que llegaste a la meta: fuerza ${fmt1(sR)} / resistencia ${fmt1(eR)}. Los días que no: ${fmt1(sN)} / ${fmt1(eN)}.`,
     n: reached.length,
@@ -487,6 +492,7 @@ function carbsBeforeTrainingInsight(sessions, nutrition, threshold = 100) {
   const diff = sHigh - sLow;
   if (Math.abs(diff) < 1.2) return null;
   return {
+    id: 'carbs',
     title: diff > 0 ? `Comer ${threshold}g+ de carbos antes de entrenar te ayuda` : `Muchos carbos antes de entrenar no parecen ayudarte`,
     desc: `Los días que comiste ${threshold}g o más de carbohidratos antes de la sesión, tu fuerza promedió ${fmt1(sHigh)}/10. Cuando comiste menos, ${fmt1(sLow)}/10.`,
     n: high.length,
@@ -501,7 +507,7 @@ function foodInsights(sessions, nutrition) {
     if (datesEaten.size < 2) return;
     const withFood = sessions.filter(s => datesEaten.has(s.date));
     const withoutFood = sessions.filter(s => !datesEaten.has(s.date));
-    if (withFood.length < 2 || withoutFood.length < 2) return;
+    if (withFood.length < 4 || withoutFood.length < 4) return;
     const sW = avg(withFood.map(s => s.strength)),
       eW = avg(withFood.map(s => s.endurance));
     const sWo = avg(withoutFood.map(s => s.strength)),
@@ -720,7 +726,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.8.4";
+const APP_VERSION = "1.9.0";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -3107,13 +3113,17 @@ function InsightsScreen({
   logs,
   nutrition,
   proteinGoal,
-  onBack
+  onBack,
+  dismissedInsights,
+  refinedInsights,
+  onDismissInsight,
+  onRefineInsight
 }) {
-  const {
-    sessions,
-    list
-  } = buildInsights(logs, nutrition, proteinGoal);
-  return /*#__PURE__*/React.createElement("div", {
+  const { sessions, list: rawList } = buildInsights(logs, nutrition, proteinGoal);
+  const [refineTarget, setRefineTarget] = useState(null);
+  const [refineNote, setRefineNote] = useState("");
+  const list = rawList.filter(ins => !(dismissedInsights || []).includes(ins.id));
+  return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "pb-10"
   }, /*#__PURE__*/React.createElement(BackHeader, {
     onBack: onBack,
@@ -3165,21 +3175,69 @@ function InsightsScreen({
     }
   }, ins.title), /*#__PURE__*/React.createElement("p", {
     className: "text-sm mt-1",
-    style: {
-      color: C.textDim
-    }
-  }, ins.desc), /*#__PURE__*/React.createElement("p", {
+    style: { color: C.textDim }
+  }, ins.desc),
+  (refinedInsights || []).find(r => r.id === ins.id) && /*#__PURE__*/React.createElement("p", {
+    className: "text-xs mt-1 italic",
+    style: { color: C.textDim2 }
+  }, "Tu nota: ", (refinedInsights || []).find(r => r.id === ins.id)?.note),
+  /*#__PURE__*/React.createElement("p", {
     className: "text-xs mt-1.5",
-    style: {
-      color: C.textDim2
-    }
-  }, "Basado en ", ins.n, " sesiones")))))))));
+    style: { color: C.textDim2 }
+  }, "Basado en ", ins.n, " sesiones"),
+  /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-3 mt-3"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => onDismissInsight(ins.id),
+    className: "text-xs font-medium",
+    style: { color: C.red }
+  }, "Desestimar"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => { setRefineTarget(ins); setRefineNote(""); },
+    className: "text-xs font-medium",
+    style: { color: C.blue }
+  }, "Refinar")))))))))),
+  refineTarget && /*#__PURE__*/React.createElement("div", {
+    style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "w-full max-w-sm rounded-2xl p-5",
+    style: { background: C.surface, border: `1px solid ${C.border}` }
+  }, /*#__PURE__*/React.createElement("p", {
+    className: "text-sm font-bold mb-1",
+    style: { color: C.text }
+  }, "Refinar insight"),
+  /*#__PURE__*/React.createElement("p", {
+    className: "text-xs mb-3",
+    style: { color: C.textDim }
+  }, refineTarget.title),
+  /*#__PURE__*/React.createElement("textarea", {
+    value: refineNote,
+    onChange: e => setRefineNote(e.target.value),
+    placeholder: "Explicá qué contexto falta o por qué no tiene sentido (ej: 'Como huevo todos los días, no es una variable, los días que tengo menos fuerza es porque dormí menos')",
+    className: "w-full rounded-xl p-3 text-sm outline-none resize-none",
+    rows: 4,
+    style: { background: C.surface2, color: C.text, border: `1px solid ${C.border}` }
+  }),
+  /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-3 mt-3"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => { onRefineInsight(refineTarget.id, refineNote); setRefineTarget(null); },
+    className: "flex-1 rounded-xl py-2.5 text-sm font-semibold",
+    style: { background: C.green, color: C.greenText }
+  }, "Guardar nota"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setRefineTarget(null),
+    className: "px-4 rounded-xl py-2.5 text-sm",
+    style: { color: C.textDim, border: `1px solid ${C.border}` }
+  }, "Cancelar")))));
 }
 function ProgressFlow({
   routines,
   logs,
   nutrition,
-  goals
+  goals,
+  dismissedInsights,
+  refinedInsights,
+  onDismissInsight,
+  onRefineInsight
 }) {
   const [view, setView] = useState("dashboard"); // dashboard | insights | detail
   const [period, setPeriod] = useState("month");
@@ -3192,7 +3250,11 @@ function ProgressFlow({
       logs: logs,
       nutrition: nutrition,
       proteinGoal: goals.proteinGoal,
-      onBack: () => setView("dashboard")
+      onBack: () => setView("dashboard"),
+      dismissedInsights: dismissedInsights,
+      refinedInsights: refinedInsights,
+      onDismissInsight: onDismissInsight,
+      onRefineInsight: onRefineInsight
     });
   }
   if (view === "dashboard") {
@@ -3619,6 +3681,7 @@ function NutritionScreen({
   const [goalProteinInput, setGoalProteinInput] = useState(goals.proteinGoal);
   const [goalCarbsInput, setGoalCarbsInput] = useState(goals.carbsGoal || "");
   const [showAllFoods, setShowAllFoods] = useState(false);
+  const [showFoodCatalog, setShowFoodCatalog] = useState(false);
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const today = todayISO();
   const todayEntries = entries.filter(e => e.date === selectedDate);
@@ -3823,58 +3886,87 @@ function NutritionScreen({
       color: C.textDim
     }
   }, "Te faltan ", goals.proteinGoal - totalProtein, " g de proteína")), recentFoods.length > 0 && /*#__PURE__*/React.createElement("div", {
-    className: "mb-3"
+    className: "mb-4"
   }, /*#__PURE__*/React.createElement("p", {
     className: "text-xs font-medium mb-2",
-    style: {
-      color: C.textDim
-    }
-  }, "Tus últimas comidas"), /*#__PURE__*/React.createElement("div", {
+    style: { color: C.textDim }
+  }, "Acceso rápido"), /*#__PURE__*/React.createElement("div", {
     className: "flex gap-2 overflow-x-auto no-scrollbar pb-1"
   }, recentFoods.map(f => /*#__PURE__*/React.createElement("button", {
     key: f.name,
     onClick: () => onAdd(f.name, f.protein, f.carbs, selectedDate),
     className: "shrink-0 rounded-full px-3 py-2 text-xs font-medium",
-    style: {
-      background: C.surface2,
-      color: C.text,
-      whiteSpace: "nowrap"
-    }
-  }, f.name)))), /*#__PURE__*/React.createElement("div", {
-    className: "relative mb-3"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "absolute left-3 top-0 bottom-0 flex items-center pointer-events-none"
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "search",
-    size: 16,
-    color: "#5E5E5E"
-  })), /*#__PURE__*/React.createElement("input", {
-    value: query,
-    onChange: e => setQuery(e.target.value),
-    placeholder: "Buscar alimento...",
-    className: "w-full rounded-xl py-2.5 text-sm outline-none placeholder:text-[#5E5E5E]",
-    style: {
-      background: C.surface,
-      color: C.text,
-      border: `1px solid ${C.border}`,
-      paddingLeft: 36,
-      paddingRight: query ? 36 : 16
-    }
-  }), query && /*#__PURE__*/React.createElement("button", {
-    onClick: () => setQuery(""),
-    className: "absolute right-3 top-0 bottom-0 flex items-center"
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "x",
-    size: 16,
-    color: C.textDim
-  }))), /*#__PURE__*/React.createElement("div", {
-    className: "space-y-2 mb-3"
-  }, filteredFoods.length === 0 && /*#__PURE__*/React.createElement("p", {
-    className: "text-sm text-center py-6",
-    style: {
-      color: C.textDim
-    }
-  }, "Sin resultados"), shownFoods.map(f => {
+    style: { background: C.surface2, color: C.text, whiteSpace: "nowrap" }
+  }, f.name)))),
+  adding ? /*#__PURE__*/React.createElement("div", {
+    className: "rounded-2xl p-3 mb-4",
+    style: { background: C.surface, border: `1px solid ${C.border}` }
+  }, /*#__PURE__*/React.createElement("input", {
+    autoFocus: true,
+    value: customName,
+    onChange: e => { setCustomName(e.target.value); setGuessNotFound(false); },
+    placeholder: "Nombre del alimento",
+    className: "w-full bg-transparent outline-none text-sm pb-2",
+    style: { color: C.text, borderBottom: `1px solid ${C.border}` }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: estimateNutrition,
+    className: "text-xs font-medium mt-2 block",
+    style: { color: C.blue }
+  }, "Calcular automáticamente"),
+  guessNotFound && /*#__PURE__*/React.createElement("p", {
+    className: "text-xs mt-1",
+    style: { color: C.textDim }
+  }, "No pude estimarlo — ingresalo a mano."),
+  /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 mt-3"
+  }, /*#__PURE__*/React.createElement(NumField, { label: "Proteína (g)", value: customProtein, onChange: setCustomProtein }),
+    /*#__PURE__*/React.createElement(NumField, { label: "Carbos (g)", value: customCarbs, onChange: setCustomCarbs })),
+  /*#__PURE__*/React.createElement("div", {
+    className: "flex gap-3 pt-3"
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: addCustom,
+    className: "flex-1 rounded-xl py-2 text-sm font-semibold",
+    style: { background: C.green, color: C.greenText }
+  }, "Agregar"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setAdding(false),
+    className: "px-4 rounded-xl py-2 text-sm font-medium",
+    style: { color: C.textDim, border: `1px solid ${C.border}` }
+  }, "Cancelar")))
+  : /*#__PURE__*/React.createElement("button", {
+    onClick: () => setAdding(true),
+    className: "mb-4 w-full flex items-center justify-center gap-1.5 rounded-2xl py-3.5 text-sm font-bold",
+    style: { background: C.green, color: C.greenText }
+  }, /*#__PURE__*/React.createElement(Icon, { name: "plus", size: 16, color: C.greenText }), " Agregar alimento"),
+  /*#__PURE__*/React.createElement("p", {
+    className: "text-xs font-medium mb-2",
+    style: { color: C.textDim }
+  }, selectedDate === today ? "Lo que comí hoy" : fmtFull(selectedDate)),
+  !showFoodCatalog ? /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowFoodCatalog(true),
+    className: "w-full flex items-center justify-between rounded-xl px-4 py-3 mt-4 mb-2",
+    style: { background: C.surface, border: `1px solid ${C.border}` }
+  }, /*#__PURE__*/React.createElement("span", { className: "text-sm font-medium", style: { color: C.text } }, "Ver todos los alimentos"),
+    /*#__PURE__*/React.createElement(Icon, { name: "chevronRight", size: 16, color: C.textDim }))
+  : /*#__PURE__*/React.createElement("div", { className: "mt-4" },
+    /*#__PURE__*/React.createElement("div", {
+      className: "relative mb-3"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "absolute left-3 top-0 bottom-0 flex items-center pointer-events-none"
+    }, /*#__PURE__*/React.createElement(Icon, { name: "search", size: 16, color: "#5E5E5E" })),
+    /*#__PURE__*/React.createElement("input", {
+      value: query,
+      onChange: e => setQuery(e.target.value),
+      placeholder: "Buscar alimento...",
+      className: "w-full rounded-xl py-2.5 text-sm outline-none placeholder:text-[#5E5E5E]",
+      style: { background: C.surface, color: C.text, border: `1px solid ${C.border}`, paddingLeft: 36, paddingRight: query ? 36 : 16 }
+    }), query && /*#__PURE__*/React.createElement("button", {
+      onClick: () => setQuery(""),
+      className: "absolute right-3 top-0 bottom-0 flex items-center"
+    }, /*#__PURE__*/React.createElement(Icon, { name: "x", size: 16, color: C.textDim }))),
+    /*#__PURE__*/React.createElement("div", { className: "space-y-2 mb-3" },
+    filteredFoods.length === 0 && /*#__PURE__*/React.createElement("p", {
+      className: "text-sm text-center py-6", style: { color: C.textDim }
+    }, "Sin resultados"), shownFoods.map(f => {
     const count = countFor(f.name);
     return /*#__PURE__*/React.createElement("div", {
       key: f.name,
@@ -3943,82 +4035,11 @@ function NutritionScreen({
     })));
   })), !query.trim() && !showAllFoods && filteredFoods.length > 4 && /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowAllFoods(true),
-    className: "text-sm font-medium mb-5",
-    style: {
-      color: C.blue
-    }
-  }, "Ver todas (", filteredFoods.length, ")"), adding ? /*#__PURE__*/React.createElement("div", {
-    className: "rounded-2xl p-3 mb-5 space-y-2",
-    style: {
-      background: C.surface,
-      border: `1px solid ${C.border}`
-    }
-  }, /*#__PURE__*/React.createElement("input", {
-    autoFocus: true,
-    value: customName,
-    onChange: e => {
-      setCustomName(e.target.value);
-      setGuessNotFound(false);
-    },
-    placeholder: "Nombre del alimento",
-    className: "w-full bg-transparent outline-none text-sm pb-2",
-    style: {
-      color: C.text,
-      borderBottom: `1px solid ${C.border}`
-    }
-  }), /*#__PURE__*/React.createElement("button", {
-    onClick: estimateNutrition,
-    className: "text-xs font-medium",
-    style: {
-      color: C.blue
-    }
-  }, "Calcular automáticamente"), guessNotFound && /*#__PURE__*/React.createElement("p", {
-    className: "text-xs",
-    style: {
-      color: C.textDim
-    }
-  }, "No pude estimarlo — ingresalo a mano abajo."), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2"
-  }, /*#__PURE__*/React.createElement(NumField, {
-    label: "Proteína (g)",
-    value: customProtein,
-    onChange: setCustomProtein
-  }), /*#__PURE__*/React.createElement(NumField, {
-    label: "Carbos (g)",
-    value: customCarbs,
-    onChange: setCustomCarbs
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-3 pt-1"
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: addCustom,
-    className: "flex-1 rounded-xl py-2 text-sm font-semibold",
-    style: {
-      background: C.green,
-      color: C.greenText
-    }
-  }, "Agregar"), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setAdding(false),
-    className: "px-4 rounded-xl py-2 text-sm font-medium",
-    style: {
-      color: C.textDim,
-      border: `1px solid ${C.border}`
-    }
-  }, "Cancelar"))) : /*#__PURE__*/React.createElement("button", {
-    onClick: () => setAdding(true),
-    className: "mb-5 w-full flex items-center justify-center gap-1.5 rounded-2xl py-3 text-sm font-semibold",
-    style: {
-      border: `1px dashed ${C.border}`,
-      color: C.green
-    }
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "plus",
-    size: 16
-  }), " Otro alimento"), /*#__PURE__*/React.createElement("p", {
-    className: "text-xs font-medium mb-2",
-    style: {
-      color: C.textDim
-    }
-  }, selectedDate === today ? "Hoy" : fmtFull(selectedDate)), todayEntries.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
+    className: "text-sm font-medium mb-3",
+    style: { color: C.blue }
+  }, "Ver todas (", filteredFoods.length, ")")),
+  /*#__PURE__*/React.createElement("div", { className: "h-px my-4", style: { background: C.border } }),
+todayEntries.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
     icon: /*#__PURE__*/React.createElement(Icon, {
       name: "apple",
       size: 22,
@@ -4352,6 +4373,8 @@ function MainApp({
   const [customFoods, setCustomFoods] = useState(null);
   const [goals, setGoals] = useState(null);
   const [gapDismissedAt, setGapDismissedAt] = useState(null);
+  const [dismissedInsights, setDismissedInsights] = useState([]);
+  const [refinedInsights, setRefinedInsights] = useState([]);
   const [gapPrompt, setGapPrompt] = useState(null);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -4401,6 +4424,8 @@ function MainApp({
       const settings = settingsDoc.exists ? settingsDoc.data() : {};
       setGoals({ proteinGoal: settings.proteinGoal || DEFAULT_PROTEIN_GOAL, carbsGoal: settings.carbsGoal || null });
       setGapDismissedAt(settings.nutritionGapDismissedAt || null);
+      setDismissedInsights(settings.dismissedInsights || []);
+      setRefinedInsights(settings.refinedInsights || []);
       setHiddenFoods(settings.hiddenFoods || []);
       setCustomFoods(settings.customFoods || []);
       // Phase 2: routines (background, non-blocking)
@@ -4668,6 +4693,20 @@ function MainApp({
     await deleteSession(id);
     setSuccessMessage("La sesión fue eliminada");
   }
+  async function dismissInsight(id) {
+    const next = [...dismissedInsights, id];
+    setDismissedInsights(next);
+    try {
+      await db.collection("settings").doc(uid).set({ ownerUid: uid, dismissedInsights: next }, { merge: true });
+    } catch(e) {}
+  }
+  async function refineInsight(id, note) {
+    const next = [...refinedInsights.filter(r => r.id !== id), { id, note, savedAt: new Date().toISOString() }];
+    setRefinedInsights(next);
+    try {
+      await db.collection("settings").doc(uid).set({ ownerUid: uid, refinedInsights: next }, { merge: true });
+    } catch(e) {}
+  }
   async function wipeAll() {
     try {
       const [rSnap, sSnap, nSnap] = await Promise.all([db.collection("routines").where("ownerUid", "==", uid).get(), db.collection("sessions").where("ownerUid", "==", uid).get(), db.collection("nutrition").where("ownerUid", "==", uid).get()]);
@@ -4793,7 +4832,11 @@ function MainApp({
     routines: routines,
     logs: logs,
     nutrition: nutrition,
-    goals: goals
+    goals: goals,
+    dismissedInsights: dismissedInsights,
+    refinedInsights: refinedInsights,
+    onDismissInsight: dismissInsight,
+    onRefineInsight: refineInsight
   }), tab === "proteina" && /*#__PURE__*/React.createElement(NutritionScreen, {
     entries: nutrition,
     hiddenFoods: hiddenFoods,
