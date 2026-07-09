@@ -726,7 +726,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.9.1";
+const APP_VERSION = "1.9.3";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -3788,11 +3788,14 @@ function NutritionScreen({
       style: { color: C.text, colorScheme: "dark", fontVariantNumeric: "tabular-nums" }
     })
   ),
-  !reached && /*#__PURE__*/React.createElement("div", { className: "mb-4" },
+  /*#__PURE__*/React.createElement("div", { className: "mb-4" },
     /*#__PURE__*/React.createElement("div", { className: "flex items-center justify-between mb-1" },
-      /*#__PURE__*/React.createElement("span", { className: "text-sm font-medium", style: { color: C.text } }, "Proteína"),
-      /*#__PURE__*/React.createElement("span", { className: "text-xs", style: { color: C.textDim, fontVariantNumeric: "tabular-nums" } },
-        totalProtein, " / ", goals.proteinGoal, " g"
+      /*#__PURE__*/React.createElement("span", { className: "text-sm font-medium", style: { color: C.text } }, "Proteína hoy"),
+      /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-1.5" },
+        reached && /*#__PURE__*/React.createElement(Icon, { name: "check", size: 13, color: C.green }),
+        /*#__PURE__*/React.createElement("span", { className: "text-xs font-semibold", style: { color: C.text, fontVariantNumeric: "tabular-nums" } },
+          totalProtein, " / ", goals.proteinGoal, " g"
+        )
       )
     ),
     /*#__PURE__*/React.createElement("div", {
@@ -3802,12 +3805,6 @@ function NutritionScreen({
       className: "h-full rounded-full",
       style: { width: pct + "%", background: reached ? C.green : C.orange, transition: "width .3s ease" }
     }))
-  ),
-  reached && /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-1.5 rounded-xl px-3 py-2 mb-4",
-    style: { background: "rgba(44,111,255,0.1)" }
-  },
-    /*#__PURE__*/React.createElement(Icon, { name: "check", size: 12 }), " Cumplida"
   ),
   recentFoods.length > 0 && /*#__PURE__*/React.createElement("div", { className: "mb-4" },
     /*#__PURE__*/React.createElement("p", { className: "text-xs font-medium mb-2", style: { color: C.textDim } }, "Acceso r\xE1pido"),
@@ -3819,6 +3816,22 @@ function NutritionScreen({
         style: { background: C.surface2, color: C.text, whiteSpace: "nowrap" }
       }, f.name))
     )
+  ),
+  /*#__PURE__*/React.createElement("div", { className: "relative mb-4" },
+    /*#__PURE__*/React.createElement("div", {
+      className: "absolute left-3 top-0 bottom-0 flex items-center pointer-events-none"
+    }, /*#__PURE__*/React.createElement(Icon, { name: "search", size: 16, color: "#5E5E5E" })),
+    /*#__PURE__*/React.createElement("input", {
+      value: query,
+      onChange: e => { setQuery(e.target.value); if (e.target.value) setShowFoodCatalog(true); },
+      placeholder: "Buscar alimento...",
+      className: "w-full rounded-xl py-2.5 text-sm outline-none placeholder:text-[#5E5E5E]",
+      style: { background: C.surface, color: C.text, border: `1px solid ${C.border}`, paddingLeft: 36, paddingRight: query ? 36 : 16 }
+    }),
+    query && /*#__PURE__*/React.createElement("button", {
+      onClick: () => setQuery(""),
+      className: "absolute right-3 top-0 bottom-0 flex items-center"
+    }, /*#__PURE__*/React.createElement(Icon, { name: "x", size: 16, color: C.textDim }))
   ),
   adding ? /*#__PURE__*/React.createElement("div", {
     className: "rounded-2xl p-3 mb-4",
