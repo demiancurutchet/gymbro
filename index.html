@@ -726,7 +726,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.9.3";
+const APP_VERSION = "1.9.4";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -3790,7 +3790,13 @@ function NutritionScreen({
   ),
   /*#__PURE__*/React.createElement("div", { className: "mb-4" },
     /*#__PURE__*/React.createElement("div", { className: "flex items-center justify-between mb-1" },
-      /*#__PURE__*/React.createElement("span", { className: "text-sm font-medium", style: { color: C.text } }, "Proteína hoy"),
+      /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-2" },
+        /*#__PURE__*/React.createElement("span", { className: "text-sm font-medium", style: { color: C.text } }, "Proteína hoy"),
+        /*#__PURE__*/React.createElement("button", {
+          onClick: () => setEditingGoals(true),
+          className: "p-0.5"
+        }, /*#__PURE__*/React.createElement(Icon, { name: "pencil", size: 13, color: C.textDim }))
+      ),
       /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-1.5" },
         reached && /*#__PURE__*/React.createElement(Icon, { name: "check", size: 13, color: C.green }),
         /*#__PURE__*/React.createElement("span", { className: "text-xs font-semibold", style: { color: C.text, fontVariantNumeric: "tabular-nums" } },
@@ -3806,6 +3812,32 @@ function NutritionScreen({
       style: { width: pct + "%", background: reached ? C.green : C.orange, transition: "width .3s ease" }
     }))
   ),
+  editingGoals ? /*#__PURE__*/React.createElement("div", {
+    className: "rounded-2xl p-4 mb-4 space-y-3",
+    style: { background: C.surface, border: `1px solid ${C.border}` }
+  },
+    /*#__PURE__*/React.createElement(NumField, { label: "Meta de prote\xEDna (g)", value: goalProteinInput, onChange: setGoalProteinInput }),
+    /*#__PURE__*/React.createElement("div", { className: "flex-1 flex flex-col gap-1" },
+      /*#__PURE__*/React.createElement("span", { className: "text-xs", style: { color: C.textDim2 } }, "Meta de carbohidratos (g) \u2014 opcional"),
+      /*#__PURE__*/React.createElement("input", {
+        type: "text", inputMode: "decimal", value: goalCarbsInput,
+        onChange: e => { if (/^\d*[.,]?\d*$/.test(e.target.value)) setGoalCarbsInput(e.target.value); },
+        placeholder: "Sin meta",
+        className: "w-full rounded-xl px-3 py-2 text-sm outline-none",
+        style: { background: C.surface2, color: C.text, border: `1px solid ${C.border}` }
+      })
+    ),
+    /*#__PURE__*/React.createElement("div", { className: "flex gap-3" },
+      /*#__PURE__*/React.createElement("button", {
+        onClick: saveGoals, className: "flex-1 rounded-xl py-2 text-sm font-semibold",
+        style: { background: C.green, color: C.greenText }
+      }, "Guardar"),
+      /*#__PURE__*/React.createElement("button", {
+        onClick: () => setEditingGoals(false), className: "px-4 rounded-xl py-2 text-sm",
+        style: { color: C.textDim, border: `1px solid ${C.border}` }
+      }, "Cancelar")
+    )
+  ) : null,
   recentFoods.length > 0 && /*#__PURE__*/React.createElement("div", { className: "mb-4" },
     /*#__PURE__*/React.createElement("p", { className: "text-xs font-medium mb-2", style: { color: C.textDim } }, "Acceso r\xE1pido"),
     /*#__PURE__*/React.createElement("div", { className: "flex gap-2 overflow-x-auto no-scrollbar pb-1" },
