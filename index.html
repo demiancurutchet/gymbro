@@ -726,7 +726,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.9.0";
+const APP_VERSION = "1.9.1";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -2209,6 +2209,8 @@ function RoutineDetail({
   const [editing, setEditing] = useState(false);
   const [focusedIdx, setFocusedIdx] = useState(null);
   const [confirmDeleteEx, setConfirmDeleteEx] = useState(false);
+  const [dragExIdx, setDragExIdx] = useState(null);
+  const [dragOverExIdx, setDragOverExIdx] = useState(null);
   const [confirmDeleteRoutine, setConfirmDeleteRoutine] = useState(false);
   const [addingExercise, setAddingExercise] = useState(false);
   const [newExName, setNewExName] = useState("");
@@ -2227,6 +2229,13 @@ function RoutineDetail({
       ...routine,
       exercises: exs
     });
+  }
+  function reorderExercise(fromIdx, toIdx) {
+    if (fromIdx === toIdx) return;
+    const exs = routine.exercises.slice();
+    const [moved] = exs.splice(fromIdx, 1);
+    exs.splice(toIdx, 0, moved);
+    onChange({ ...routine, exercises: exs });
   }
   function removeExercise(idx) {
     const exs = routine.exercises.slice();
@@ -2367,29 +2376,38 @@ function RoutineDetail({
     }, "Agregar ejercicio")
   }), /*#__PURE__*/React.createElement("div", {
     className: "space-y-3"
-  }, routine.exercises.map((ex, idx) => editing ? /*#__PURE__*/React.createElement("button", {
+  }, routine.exercises.map((ex, idx) => editing ? /*#__PURE__*/React.createElement("div", {
     key: ex.id,
+    className: "flex items-center gap-2 rounded-2xl px-3 py-3 text-left",
+    style: {
+      background: dragOverExIdx === idx ? C.surface2 : C.surface,
+      border: `1px solid ${dragOverExIdx === idx ? C.blue : C.border}`,
+      opacity: dragExIdx === idx ? 0.4 : 1,
+      transition: "opacity .15s"
+    },
+    onDragOver: e => { e.preventDefault(); setDragOverExIdx(idx); },
+    onDrop: e => { e.preventDefault(); if (dragExIdx !== null) reorderExercise(dragExIdx, idx); setDragExIdx(null); setDragOverExIdx(null); },
+    onDragLeave: () => setDragOverExIdx(null)
+  },
+  /*#__PURE__*/React.createElement("div", {
+    draggable: true,
+    onDragStart: e => { e.dataTransfer.effectAllowed = "move"; setDragExIdx(idx); },
+    onDragEnd: () => { setDragExIdx(null); setDragOverExIdx(null); },
+    className: "p-2 cursor-grab touch-none",
+    style: { color: C.textDim2 }
+  }, /*#__PURE__*/React.createElement(Icon, { name: "grip", size: 16, color: C.textDim2 })),
+  /*#__PURE__*/React.createElement("button", {
     onClick: () => setFocusedIdx(idx),
-    className: "w-full flex items-center justify-between rounded-2xl px-4 py-3.5 text-left",
-    style: {
-      background: C.surface,
-      border: `1px solid ${C.border}`
-    }
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
-    className: "font-semibold",
-    style: {
-      color: C.text
-    }
-  }, ex.name, ex.bodyweight ? " 🤸" : ""), /*#__PURE__*/React.createElement("p", {
-    className: "text-xs mt-0.5",
-    style: {
-      color: C.textDim
-    }
-  }, ex.sets.length, " ", ex.sets.length === 1 ? "serie" : "series")), /*#__PURE__*/React.createElement(Icon, {
-    name: "chevronRight",
-    size: 18,
-    color: C.textDim2
-  })) : /*#__PURE__*/React.createElement("div", {
+    className: "flex-1 flex items-center justify-between text-left min-w-0"
+  },
+    /*#__PURE__*/React.createElement("div", { className: "min-w-0" },
+      /*#__PURE__*/React.createElement("p", { className: "font-semibold", style: { color: C.text } }, ex.name, ex.bodyweight ? " 🤸" : ""),
+      /*#__PURE__*/React.createElement("p", { className: "text-xs mt-0.5", style: { color: C.textDim } },
+        ex.sets.length, " ", ex.sets.length === 1 ? "serie" : "series"
+      )
+    ),
+    /*#__PURE__*/React.createElement(Icon, { name: "chevronRight", size: 18, color: C.textDim2 })
+  )) : /*#__PURE__*/React.createElement("div", {
     key: ex.id,
     className: "rounded-2xl p-4",
     style: {
@@ -3755,406 +3773,232 @@ function NutritionScreen({
   }
   return /*#__PURE__*/React.createElement("div", {
     className: "px-4 pt-6 pb-10"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-end justify-between mb-1"
-  }, /*#__PURE__*/React.createElement("h1", {
-    className: "text-3xl font-bold tracking-tight",
-    style: {
-      color: C.text
-    }
-  }, "Alimentación"), /*#__PURE__*/React.createElement("button", {
-    onClick: () => {
-      setGoalProteinInput(goals.proteinGoal);
-      setGoalCarbsInput(goals.carbsGoal || "");
-      setEditingGoals(v => !v);
-    },
-    className: "text-sm font-medium",
-    style: {
-      color: C.blue
-    }
-  }, editingGoals ? "Listo" : "Metas")), /*#__PURE__*/React.createElement("p", {
-    className: "text-sm mb-3",
-    style: {
-      color: C.textDim
-    }
-  }, "Meta de proteína: ", goals.proteinGoal, " g", goals.carbsGoal ? ` · Meta de carbos: ${goals.carbsGoal} g` : ""), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between rounded-2xl px-4 py-3 mb-5",
-    style: {
-      background: C.surface,
-      border: `1px solid ${C.border}`
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-sm font-medium",
-    style: {
-      color: C.text
-    }
-  }, selectedDate === today ? "Registrando: hoy" : `Registrando: ${fmtFull(selectedDate)}`), /*#__PURE__*/React.createElement("input", {
-    type: "date",
-    value: selectedDate,
-    max: today,
-    onChange: e => setSelectedDate(e.target.value),
-    className: "bg-transparent text-sm outline-none",
-    style: {
-      color: C.text,
-      colorScheme: "dark",
-      fontVariantNumeric: "tabular-nums"
-    }
-  })), editingGoals && /*#__PURE__*/React.createElement("div", {
-    className: "rounded-2xl p-4 mb-5 space-y-3",
-    style: {
-      background: C.surface,
-      border: `1px solid ${C.border}`
-    }
-  }, /*#__PURE__*/React.createElement(NumField, {
-    label: "Meta de proteína (g)",
-    value: goalProteinInput,
-    onChange: setGoalProteinInput
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "flex-1 flex flex-col gap-1"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-xs",
-    style: {
-      color: C.textDim2
-    }
-  }, "Meta de carbohidratos (g) — opcional"), /*#__PURE__*/React.createElement("input", {
-    type: "text",
-    inputMode: "decimal",
-    value: goalCarbsInput,
-    onChange: e => {
-      if (/^\d*[.,]?\d*$/.test(e.target.value)) setGoalCarbsInput(e.target.value);
-    },
-    placeholder: "Sin meta",
-    className: "w-full rounded-xl px-3 py-2 text-sm outline-none",
-    style: {
-      background: C.surface2,
-      color: C.text,
-      border: `1px solid ${C.border}`,
-      fontVariantNumeric: "tabular-nums"
-    }
-  })), /*#__PURE__*/React.createElement("button", {
-    onClick: saveGoals,
-    className: "w-full rounded-xl py-2.5 text-sm font-semibold",
-    style: {
-      background: C.green,
-      color: C.greenText
-    }
-  }, "Guardar metas")), /*#__PURE__*/React.createElement("div", {
-    className: "rounded-2xl p-4 mb-5",
-    style: {
-      background: C.surface,
-      border: `1px solid ${C.border}`
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center justify-between mb-3"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "flex items-baseline gap-1.5"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-3xl font-bold tracking-tight",
-    style: {
-      color: C.text,
-      fontVariantNumeric: "tabular-nums"
-    }
-  }, totalProtein), /*#__PURE__*/React.createElement("span", {
-    className: "text-sm",
-    style: {
-      color: C.textDim
-    }
-  }, "/ ", goals.proteinGoal, " g proteína")), reached && /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold",
-    style: {
-      background: "rgba(44,111,255,0.15)",
-      color: C.green
-    }
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "check",
-    size: 12
-  }), " Cumplida")), /*#__PURE__*/React.createElement("div", {
-    className: "w-full h-2.5 rounded-full overflow-hidden",
-    style: {
-      background: C.surface2
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "h-full rounded-full",
-    style: {
-      width: `${pct}%`,
-      background: reached ? C.green : C.orange,
-      transition: "width .3s ease"
-    }
-  })), !reached && /*#__PURE__*/React.createElement("p", {
-    className: "text-xs mt-2",
-    style: {
-      color: C.textDim
-    }
-  }, "Te faltan ", goals.proteinGoal - totalProtein, " g de proteína")), recentFoods.length > 0 && /*#__PURE__*/React.createElement("div", {
-    className: "mb-4"
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "text-xs font-medium mb-2",
-    style: { color: C.textDim }
-  }, "Acceso rápido"), /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-2 overflow-x-auto no-scrollbar pb-1"
-  }, recentFoods.map(f => /*#__PURE__*/React.createElement("button", {
-    key: f.name,
-    onClick: () => onAdd(f.name, f.protein, f.carbs, selectedDate),
-    className: "shrink-0 rounded-full px-3 py-2 text-xs font-medium",
-    style: { background: C.surface2, color: C.text, whiteSpace: "nowrap" }
-  }, f.name)))),
+  },
+  /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center justify-between rounded-2xl px-4 py-3 mb-3",
+    style: { background: C.surface, border: `1px solid ${C.border}` }
+  },
+    /*#__PURE__*/React.createElement("span", { className: "text-sm font-medium", style: { color: C.text } },
+      selectedDate === today ? "Registrando: hoy" : "Registrando: " + fmtFull(selectedDate)
+    ),
+    /*#__PURE__*/React.createElement("input", {
+      type: "date", value: selectedDate, max: today,
+      onChange: e => setSelectedDate(e.target.value),
+      className: "bg-transparent text-sm outline-none",
+      style: { color: C.text, colorScheme: "dark", fontVariantNumeric: "tabular-nums" }
+    })
+  ),
+  !reached && /*#__PURE__*/React.createElement("div", { className: "mb-4" },
+    /*#__PURE__*/React.createElement("div", { className: "flex items-center justify-between mb-1" },
+      /*#__PURE__*/React.createElement("span", { className: "text-sm font-medium", style: { color: C.text } }, "Proteína"),
+      /*#__PURE__*/React.createElement("span", { className: "text-xs", style: { color: C.textDim, fontVariantNumeric: "tabular-nums" } },
+        totalProtein, " / ", goals.proteinGoal, " g"
+      )
+    ),
+    /*#__PURE__*/React.createElement("div", {
+      className: "w-full h-2.5 rounded-full overflow-hidden",
+      style: { background: C.surface2 }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "h-full rounded-full",
+      style: { width: pct + "%", background: reached ? C.green : C.orange, transition: "width .3s ease" }
+    }))
+  ),
+  reached && /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-1.5 rounded-xl px-3 py-2 mb-4",
+    style: { background: "rgba(44,111,255,0.1)" }
+  },
+    /*#__PURE__*/React.createElement(Icon, { name: "check", size: 12 }), " Cumplida"
+  ),
+  recentFoods.length > 0 && /*#__PURE__*/React.createElement("div", { className: "mb-4" },
+    /*#__PURE__*/React.createElement("p", { className: "text-xs font-medium mb-2", style: { color: C.textDim } }, "Acceso r\xE1pido"),
+    /*#__PURE__*/React.createElement("div", { className: "flex gap-2 overflow-x-auto no-scrollbar pb-1" },
+      recentFoods.map(f => /*#__PURE__*/React.createElement("button", {
+        key: f.name,
+        onClick: () => onAdd(f.name, f.protein, f.carbs, selectedDate),
+        className: "shrink-0 rounded-full px-3 py-2 text-xs font-medium",
+        style: { background: C.surface2, color: C.text, whiteSpace: "nowrap" }
+      }, f.name))
+    )
+  ),
   adding ? /*#__PURE__*/React.createElement("div", {
     className: "rounded-2xl p-3 mb-4",
     style: { background: C.surface, border: `1px solid ${C.border}` }
-  }, /*#__PURE__*/React.createElement("input", {
-    autoFocus: true,
-    value: customName,
-    onChange: e => { setCustomName(e.target.value); setGuessNotFound(false); },
-    placeholder: "Nombre del alimento",
-    className: "w-full bg-transparent outline-none text-sm pb-2",
-    style: { color: C.text, borderBottom: `1px solid ${C.border}` }
-  }), /*#__PURE__*/React.createElement("button", {
-    onClick: estimateNutrition,
-    className: "text-xs font-medium mt-2 block",
-    style: { color: C.blue }
-  }, "Calcular automáticamente"),
-  guessNotFound && /*#__PURE__*/React.createElement("p", {
-    className: "text-xs mt-1",
-    style: { color: C.textDim }
-  }, "No pude estimarlo — ingresalo a mano."),
-  /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2 mt-3"
-  }, /*#__PURE__*/React.createElement(NumField, { label: "Proteína (g)", value: customProtein, onChange: setCustomProtein }),
-    /*#__PURE__*/React.createElement(NumField, { label: "Carbos (g)", value: customCarbs, onChange: setCustomCarbs })),
-  /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-3 pt-3"
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: addCustom,
-    className: "flex-1 rounded-xl py-2 text-sm font-semibold",
-    style: { background: C.green, color: C.greenText }
-  }, "Agregar"), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setAdding(false),
-    className: "px-4 rounded-xl py-2 text-sm font-medium",
-    style: { color: C.textDim, border: `1px solid ${C.border}` }
-  }, "Cancelar")))
-  : /*#__PURE__*/React.createElement("button", {
+  },
+    /*#__PURE__*/React.createElement("input", {
+      autoFocus: true,
+      value: customName,
+      onChange: e => { setCustomName(e.target.value); setGuessNotFound(false); },
+      placeholder: "Nombre del alimento",
+      className: "w-full bg-transparent outline-none text-sm pb-2",
+      style: { color: C.text, borderBottom: `1px solid ${C.border}` }
+    }),
+    /*#__PURE__*/React.createElement("button", {
+      onClick: estimateNutrition,
+      className: "text-xs font-medium mt-2 block",
+      style: { color: C.blue }
+    }, "Calcular autom\xE1ticamente"),
+    guessNotFound && /*#__PURE__*/React.createElement("p", {
+      className: "text-xs mt-1",
+      style: { color: C.textDim }
+    }, "No pude estimarlo \u2014 ingresalo a mano."),
+    /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-2 mt-3" },
+      /*#__PURE__*/React.createElement(NumField, { label: "Prote\xEDna (g)", value: customProtein, onChange: setCustomProtein }),
+      /*#__PURE__*/React.createElement(NumField, { label: "Carbos (g)", value: customCarbs, onChange: setCustomCarbs })
+    ),
+    /*#__PURE__*/React.createElement("div", { className: "flex gap-3 pt-3" },
+      /*#__PURE__*/React.createElement("button", {
+        onClick: addCustom,
+        className: "flex-1 rounded-xl py-2 text-sm font-semibold",
+        style: { background: C.green, color: C.greenText }
+      }, "Agregar"),
+      /*#__PURE__*/React.createElement("button", {
+        onClick: () => setAdding(false),
+        className: "px-4 rounded-xl py-2 text-sm font-medium",
+        style: { color: C.textDim, border: `1px solid ${C.border}` }
+      }, "Cancelar")
+    )
+  ) : /*#__PURE__*/React.createElement("button", {
     onClick: () => setAdding(true),
     className: "mb-4 w-full flex items-center justify-center gap-1.5 rounded-2xl py-3.5 text-sm font-bold",
     style: { background: C.green, color: C.greenText }
   }, /*#__PURE__*/React.createElement(Icon, { name: "plus", size: 16, color: C.greenText }), " Agregar alimento"),
   /*#__PURE__*/React.createElement("p", {
-    className: "text-xs font-medium mb-2",
+    className: "text-xs font-bold uppercase mb-2",
     style: { color: C.textDim }
-  }, selectedDate === today ? "Lo que comí hoy" : fmtFull(selectedDate)),
+  }, selectedDate === today ? "HOY" : fmtFull(selectedDate)),
+  /*#__PURE__*/React.createElement("div", { className: "space-y-2 mb-3" },
+    (() => {
+      const seen = new Set();
+      const deduped = [];
+      todayEntries.slice().sort((a,b) => (b.loggedAt||"").localeCompare(a.loggedAt||"")).forEach(e => {
+        if (!seen.has(e.name)) {
+          seen.add(e.name);
+          const foodDef = [...FOODS, ...customFoods].find(fd => fd.name === e.name) || e;
+          deduped.push({ name: e.name, protein: foodDef.protein || e.protein, carbs: foodDef.carbs || e.carbs });
+        }
+      });
+      if (deduped.length === 0) return /*#__PURE__*/React.createElement("p", {
+        className: "text-sm py-2",
+        style: { color: C.textDim }
+      }, selectedDate === today ? "Todav\xEDa no registraste nada hoy" : "No registraste nada ese d\xEDa");
+      return deduped.map(f => {
+        const count = countFor(f.name);
+        return /*#__PURE__*/React.createElement("div", {
+          key: f.name,
+          className: "flex items-center gap-2 rounded-xl px-3 py-2.5",
+          style: { background: C.surface, border: `1px solid ${C.border}` }
+        },
+          /*#__PURE__*/React.createElement("div", { className: "flex-1 min-w-0" },
+            /*#__PURE__*/React.createElement("p", { className: "text-sm font-medium truncate", style: { color: C.text } }, f.name),
+            /*#__PURE__*/React.createElement("p", { className: "text-xs mt-0.5", style: { fontVariantNumeric: "tabular-nums" } },
+              /*#__PURE__*/React.createElement("span", { style: { color: C.green } }, f.protein, " g prote\xEDna"),
+              /*#__PURE__*/React.createElement("span", { style: { color: C.textDim2 } }, " \xB7 "),
+              /*#__PURE__*/React.createElement("span", { style: { color: C.blue } }, f.carbs, " g carbos")
+            )
+          ),
+          /*#__PURE__*/React.createElement("button", {
+            onClick: () => onRemoveOne(f.name, selectedDate),
+            className: "w-7 h-7 shrink-0 rounded-full flex items-center justify-center",
+            style: { background: C.surface2, color: count > 0 ? C.text : C.textDim2 }
+          }, /*#__PURE__*/React.createElement(Icon, { name: "minus", size: 14 })),
+          /*#__PURE__*/React.createElement("span", {
+            className: "w-4 shrink-0 text-center text-sm font-semibold",
+            style: { color: C.text, fontVariantNumeric: "tabular-nums" }
+          }, count),
+          /*#__PURE__*/React.createElement("button", {
+            onClick: () => onAdd(f.name, f.protein, f.carbs, selectedDate),
+            className: "w-7 h-7 shrink-0 rounded-full flex items-center justify-center",
+            style: { background: C.green, color: C.greenText }
+          }, /*#__PURE__*/React.createElement(Icon, { name: "plus", size: 14 }))
+        );
+      });
+    })()
+  ),
+  /*#__PURE__*/React.createElement("div", { className: "h-px my-4", style: { background: C.border } }),
   !showFoodCatalog ? /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowFoodCatalog(true),
-    className: "w-full flex items-center justify-between rounded-xl px-4 py-3 mt-4 mb-2",
+    className: "w-full flex items-center justify-between rounded-xl px-4 py-3 mb-2",
     style: { background: C.surface, border: `1px solid ${C.border}` }
-  }, /*#__PURE__*/React.createElement("span", { className: "text-sm font-medium", style: { color: C.text } }, "Ver todos los alimentos"),
-    /*#__PURE__*/React.createElement(Icon, { name: "chevronRight", size: 16, color: C.textDim }))
-  : /*#__PURE__*/React.createElement("div", { className: "mt-4" },
-    /*#__PURE__*/React.createElement("div", {
-      className: "relative mb-3"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "absolute left-3 top-0 bottom-0 flex items-center pointer-events-none"
-    }, /*#__PURE__*/React.createElement(Icon, { name: "search", size: 16, color: "#5E5E5E" })),
-    /*#__PURE__*/React.createElement("input", {
-      value: query,
-      onChange: e => setQuery(e.target.value),
-      placeholder: "Buscar alimento...",
-      className: "w-full rounded-xl py-2.5 text-sm outline-none placeholder:text-[#5E5E5E]",
-      style: { background: C.surface, color: C.text, border: `1px solid ${C.border}`, paddingLeft: 36, paddingRight: query ? 36 : 16 }
-    }), query && /*#__PURE__*/React.createElement("button", {
-      onClick: () => setQuery(""),
-      className: "absolute right-3 top-0 bottom-0 flex items-center"
-    }, /*#__PURE__*/React.createElement(Icon, { name: "x", size: 16, color: C.textDim }))),
+  },
+    /*#__PURE__*/React.createElement("span", { className: "text-sm font-medium", style: { color: C.text } }, "Ver todos los alimentos"),
+    /*#__PURE__*/React.createElement(Icon, { name: "chevronRight", size: 16, color: C.textDim })
+  ) : /*#__PURE__*/React.createElement("div", null,
+    /*#__PURE__*/React.createElement("button", {
+      onClick: () => { setShowFoodCatalog(false); setQuery(""); },
+      className: "text-xs font-medium mb-3 flex items-center gap-1",
+      style: { color: C.textDim }
+    }, "\u2715 Cerrar cat\xE1logo"),
+    /*#__PURE__*/React.createElement("div", { className: "relative mb-3" },
+      /*#__PURE__*/React.createElement("div", {
+        className: "absolute left-3 top-0 bottom-0 flex items-center pointer-events-none"
+      }, /*#__PURE__*/React.createElement(Icon, { name: "search", size: 16, color: "#5E5E5E" })),
+      /*#__PURE__*/React.createElement("input", {
+        autoFocus: true,
+        value: query,
+        onChange: e => setQuery(e.target.value),
+        placeholder: "Buscar alimento...",
+        className: "w-full rounded-xl py-2.5 text-sm outline-none placeholder:text-[#5E5E5E]",
+        style: { background: C.surface, color: C.text, border: `1px solid ${C.border}`, paddingLeft: 36, paddingRight: query ? 36 : 16 }
+      }),
+      query && /*#__PURE__*/React.createElement("button", {
+        onClick: () => setQuery(""),
+        className: "absolute right-3 top-0 bottom-0 flex items-center"
+      }, /*#__PURE__*/React.createElement(Icon, { name: "x", size: 16, color: C.textDim }))
+    ),
     /*#__PURE__*/React.createElement("div", { className: "space-y-2 mb-3" },
-    filteredFoods.length === 0 && /*#__PURE__*/React.createElement("p", {
-      className: "text-sm text-center py-6", style: { color: C.textDim }
-    }, "Sin resultados"), shownFoods.map(f => {
-    const count = countFor(f.name);
-    return /*#__PURE__*/React.createElement("div", {
-      key: f.name,
-      className: "flex items-center gap-2 rounded-xl px-3 py-2.5",
-      style: {
-        background: C.surface,
-        border: `1px solid ${C.border}`
-      }
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "flex-1 min-w-0"
-    }, /*#__PURE__*/React.createElement("p", {
-      className: "text-sm font-medium truncate",
-      style: {
-        color: C.text
-      }
-    }, f.name), /*#__PURE__*/React.createElement("p", {
-      className: "text-xs mt-0.5",
-      style: {
-        fontVariantNumeric: "tabular-nums"
-      }
-    }, /*#__PURE__*/React.createElement("span", {
-      style: {
-        color: C.green
-      }
-    }, f.protein, " g proteína"), /*#__PURE__*/React.createElement("span", {
-      style: {
-        color: C.textDim2
-      }
-    }, " · "), /*#__PURE__*/React.createElement("span", {
-      style: {
-        color: C.blue
-      }
-    }, f.carbs, " g carbos"))), /*#__PURE__*/React.createElement("button", {
-      onClick: () => onRemoveOne(f.name, selectedDate),
-      className: "w-7 h-7 shrink-0 rounded-full flex items-center justify-center",
-      style: {
-        background: C.surface2,
-        color: count > 0 ? C.text : C.textDim2
-      }
-    }, /*#__PURE__*/React.createElement(Icon, {
-      name: "minus",
-      size: 14
-    })), /*#__PURE__*/React.createElement("span", {
-      className: "w-4 shrink-0 text-center text-sm font-semibold",
-      style: {
-        color: C.text,
-        fontVariantNumeric: "tabular-nums"
-      }
-    }, count), /*#__PURE__*/React.createElement("button", {
-      onClick: () => onAdd(f.name, f.protein, f.carbs, selectedDate),
-      className: "w-7 h-7 shrink-0 rounded-full flex items-center justify-center",
-      style: {
-        background: C.green,
-        color: C.greenText
-      }
-    }, /*#__PURE__*/React.createElement(Icon, {
-      name: "plus",
-      size: 14
-    })), /*#__PURE__*/React.createElement("button", {
-      onClick: () => onHideFood(f.name),
-      className: "p-1 shrink-0"
-    }, /*#__PURE__*/React.createElement(Icon, {
-      name: "trash",
-      size: 14,
-      color: C.red
-    })));
-  })), !query.trim() && !showAllFoods && filteredFoods.length > 4 && /*#__PURE__*/React.createElement("button", {
-    onClick: () => setShowAllFoods(true),
-    className: "text-sm font-medium mb-3",
-    style: { color: C.blue }
-  }, "Ver todas (", filteredFoods.length, ")")),
-  /*#__PURE__*/React.createElement("div", { className: "h-px my-4", style: { background: C.border } }),
-todayEntries.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
-    icon: /*#__PURE__*/React.createElement(Icon, {
-      name: "apple",
-      size: 22,
-      color: C.green
-    }),
-    title: selectedDate === today ? "Todavía no registraste nada hoy" : "No registraste nada ese día"
-  }) : /*#__PURE__*/React.createElement("div", {
-    className: "space-y-2"
-  }, todayEntries.map(e => editingId === e.id ? /*#__PURE__*/React.createElement("div", {
-    key: e.id,
-    className: "rounded-xl px-3 py-2 space-y-2",
-    style: {
-      background: C.surface,
-      border: `1px solid ${C.border}`
-    }
-  }, /*#__PURE__*/React.createElement("input", {
-    autoFocus: true,
-    value: editName,
-    onChange: ev => setEditName(ev.target.value),
-    className: "w-full bg-transparent outline-none text-sm",
-    style: {
-      color: C.text
-    }
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-2"
-  }, /*#__PURE__*/React.createElement(NumField, {
-    label: "Proteína (g)",
-    value: editProtein,
-    onChange: setEditProtein
-  }), /*#__PURE__*/React.createElement(NumField, {
-    label: "Carbos (g)",
-    value: editCarbs,
-    onChange: setEditCarbs
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "flex gap-2 self-end pb-0.5"
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: saveEdit
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "check",
-    size: 18,
-    color: C.green
-  })), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setEditingId(null)
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "x",
-    size: 18,
-    color: C.textDim
-  }))))) : /*#__PURE__*/React.createElement("div", {
-    key: e.id,
-    className: "flex items-center justify-between rounded-xl px-4 py-2.5",
-    style: {
-      background: C.surface,
-      border: `1px solid ${C.border}`
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "min-w-0 pr-2"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-sm truncate block",
-    style: {
-      color: C.text
-    }
-  }, e.name), e.loggedAt && /*#__PURE__*/React.createElement("span", {
-    className: "text-xs",
-    style: {
-      color: C.textDim2,
-      fontVariantNumeric: "tabular-nums"
-    }
-  }, new Date(e.loggedAt).toLocaleTimeString("es-AR", {
-    hour: "2-digit",
-    minute: "2-digit"
-  }), "hs")), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-3 shrink-0"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "text-sm font-semibold",
-    style: {
-      fontVariantNumeric: "tabular-nums"
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      color: C.green
-    }
-  }, e.protein, "g"), /*#__PURE__*/React.createElement("span", {
-    style: {
-      color: C.textDim2
-    }
-  }, " / "), /*#__PURE__*/React.createElement("span", {
-    style: {
-      color: C.blue
-    }
-  }, e.carbs || 0, "g")), /*#__PURE__*/React.createElement("button", {
-    onClick: () => startEdit(e)
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "pencil",
-    size: 14,
-    color: C.blue
-  })), /*#__PURE__*/React.createElement("button", {
-    onClick: () => onRemoveEntry(e.id)
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "trash",
-    size: 14,
-    color: C.red
-  })))))), /*#__PURE__*/React.createElement("div", {
+      filteredFoods.length === 0 && /*#__PURE__*/React.createElement("p", {
+        className: "text-sm text-center py-6", style: { color: C.textDim }
+      }, "Sin resultados"),
+      shownFoods.map(f => {
+        const count = countFor(f.name);
+        return /*#__PURE__*/React.createElement("div", {
+          key: f.name,
+          className: "flex items-center gap-2 rounded-xl px-3 py-2.5",
+          style: { background: C.surface, border: `1px solid ${C.border}` }
+        },
+          /*#__PURE__*/React.createElement("div", { className: "flex-1 min-w-0" },
+            /*#__PURE__*/React.createElement("p", { className: "text-sm font-medium truncate", style: { color: C.text } }, f.name),
+            /*#__PURE__*/React.createElement("p", { className: "text-xs mt-0.5", style: { fontVariantNumeric: "tabular-nums" } },
+              /*#__PURE__*/React.createElement("span", { style: { color: C.green } }, f.protein, " g prote\xEDna"),
+              /*#__PURE__*/React.createElement("span", { style: { color: C.textDim2 } }, " \xB7 "),
+              /*#__PURE__*/React.createElement("span", { style: { color: C.blue } }, f.carbs, " g carbos")
+            )
+          ),
+          /*#__PURE__*/React.createElement("button", {
+            onClick: () => onRemoveOne(f.name, selectedDate),
+            className: "w-7 h-7 shrink-0 rounded-full flex items-center justify-center",
+            style: { background: C.surface2, color: count > 0 ? C.text : C.textDim2 }
+          }, /*#__PURE__*/React.createElement(Icon, { name: "minus", size: 14 })),
+          /*#__PURE__*/React.createElement("span", {
+            className: "w-4 shrink-0 text-center text-sm font-semibold",
+            style: { color: C.text, fontVariantNumeric: "tabular-nums" }
+          }, count),
+          /*#__PURE__*/React.createElement("button", {
+            onClick: () => onAdd(f.name, f.protein, f.carbs, selectedDate),
+            className: "w-7 h-7 shrink-0 rounded-full flex items-center justify-center",
+            style: { background: C.green, color: C.greenText }
+          }, /*#__PURE__*/React.createElement(Icon, { name: "plus", size: 14 })),
+          /*#__PURE__*/React.createElement("button", {
+            onClick: () => onHideFood(f.name),
+            className: "p-1 shrink-0"
+          }, /*#__PURE__*/React.createElement(Icon, { name: "trash", size: 14, color: C.red }))
+        );
+      })
+    ),
+    !query.trim() && !showAllFoods && filteredFoods.length > 4 && /*#__PURE__*/React.createElement("button", {
+      onClick: () => setShowAllFoods(true),
+      className: "text-sm font-medium mb-3",
+      style: { color: C.blue }
+    }, "Ver todas (", filteredFoods.length, ")")
+  ),
+  /*#__PURE__*/React.createElement("div", {
     className: "text-center mt-8"
   }, /*#__PURE__*/React.createElement("button", {
     onClick: onTestGapPrompt,
     className: "text-xs",
-    style: {
-      color: C.textDim2
-    }
+    style: { color: C.textDim2 }
   }, "Probar recordatorio de comidas faltantes")));
 }
-
-// ---------------------------------------------------------------------------
-// Bottom nav
-// ---------------------------------------------------------------------------
 function BottomNav({
   tab,
   setTab
