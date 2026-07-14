@@ -314,6 +314,41 @@ function cloneExerciseForSession(ex) {
     sets: ex.sets.map(cloneSetForSession)
   };
 }
+function buildExercisesFromLastSession(routine, lastSession) {
+  if (!lastSession) return routine.exercises.map(cloneExerciseForSession);
+  return routine.exercises.map(routineEx => {
+    const lastEx = lastSession.exercises.find(e =>
+      e.name.trim().toLowerCase() === routineEx.name.trim().toLowerCase()
+    );
+    if (!lastEx || !lastEx.sets || lastEx.sets.length === 0) {
+      return cloneExerciseForSession(routineEx);
+    }
+    // Use same number of sets as the routine plan, but fill values from last session
+    const sets = routineEx.sets.map((planSet, i) => {
+      const lastSet = lastEx.sets[i] || lastEx.sets[lastEx.sets.length - 1];
+      if (planSet.type === "drop" && lastSet.type === "drop") {
+        return {
+          id: uid(), type: "drop",
+          reps: planSet.reps, weight: planSet.weight,
+          drops: lastSet.drops ? lastSet.drops.map(d => ({ ...d, id: uid() })) : planSet.drops.map(cloneSetForSession)
+        };
+      }
+      return {
+        id: uid(), type: "normal",
+        reps: lastSet.reps || planSet.reps,
+        weight: lastSet.weight !== undefined ? lastSet.weight : planSet.weight,
+        drops: []
+      };
+    });
+    return {
+      id: uid(),
+      exerciseId: routineEx.id,
+      name: routineEx.name,
+      bodyweight: lastEx.bodyweight !== undefined ? lastEx.bodyweight : !!routineEx.bodyweight,
+      sets
+    };
+  });
+}
 function repsOfSet(s) {
   return s.type === "drop" ? s.drops[0]?.reps || 0 : s.reps || 0;
 }
@@ -726,7 +761,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.9.4";
+const APP_VERSION = "1.9.6";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -2521,7 +2556,8 @@ function SessionScreen({
   onCancel,
   onSave,
   onFinalize,
-  onDone
+  onDone,
+  lastSession
 }) {
   const DRAFT_KEY = "gymbro_draft_" + routine.id;
   const loadDraft = () => {
@@ -2533,7 +2569,7 @@ function SessionScreen({
   };
   const draft = loadDraft();
   const [date, setDate] = useState(draft ? draft.date : todayISO());
-  const [exercises, setExercises] = useState(() => draft ? draft.exercises : routine.exercises.map(cloneExerciseForSession));
+  const [exercises, setExercises] = useState(() => draft ? draft.exercises : buildExercisesFromLastSession(routine, lastSession));
   const [startedAt] = useState(() => draft ? draft.startedAt : new Date().toISOString());
   const [focusedIndex, setFocusedIndex] = useState(null);
   const [completed, setCompleted] = useState(() => draft ? new Set(draft.completed) : new Set());
@@ -2641,6 +2677,13 @@ function SessionScreen({
   }, /*#__PURE__*/React.createElement(Icon, { name: "check", size: 14, color: C.green }),
     /*#__PURE__*/React.createElement("span", { className: "text-xs font-medium", style: { color: C.text } },
       "Sesión recuperada automáticamente — tus ejercicios completados siguen marcados"
+    )
+  ), !resumedFromDraft && lastSession && /*#__PURE__*/React.createElement("div", {
+    className: "flex items-center gap-2 rounded-xl px-3 py-2 mb-3",
+    style: { background: "rgba(255,159,10,0.1)" }
+  }, /*#__PURE__*/React.createElement(Icon, { name: "trendingUp", size: 14, color: C.orange }),
+    /*#__PURE__*/React.createElement("span", { className: "text-xs font-medium", style: { color: C.text } },
+      "Valores del " + fmtFull(lastSession.date) + " — modificalos si mejoraste"
     )
   ), /*#__PURE__*/React.createElement("div", {
     className: "flex items-center justify-between mb-2 rounded-2xl px-4 py-3",
@@ -3247,6 +3290,174 @@ function InsightsScreen({
     style: { color: C.textDim, border: `1px solid ${C.border}` }
   }, "Cancelar")))));
 }
+function ProteinCalendar({ nutrition, goals, onBack }) {
+  const [calMode, setCalMode] = useState("month"); // "month" | "year"
+  const [monthOffset, setMonthOffset] = useState(0); // 0 = current month, -1 = prev, etc.
+
+  const proteinGoal = goals.proteinGoal || 120;
+
+  // Build a map: date -> total protein
+  const proteinByDay = {};
+  (nutrition || []).forEach(e => {
+    if (!e.date) return;
+    proteinByDay[e.date] = (proteinByDay[e.date] || 0) + (Number(e.protein) || 0);
+  });
+
+  function dayColor(dateIso) {
+    if (!proteinByDay[dateIso] && proteinByDay[dateIso] !== 0) return null; // no data
+    const pct = proteinByDay[dateIso] / proteinGoal;
+    if (pct >= 1) return C.green;
+    if (pct >= 0.5) return C.orange;
+    return C.red;
+  }
+
+  // Monthly view
+  function renderMonth(year, month) {
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    const today = todayISO();
+    const startDow = (firstDay.getDay() + 6) % 7; // Mon=0
+    const days = [];
+    for (let i = 0; i < startDow; i++) days.push(null);
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+      const iso = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      days.push(iso);
+    }
+    while (days.length % 7 !== 0) days.push(null);
+
+    const monthName = firstDay.toLocaleDateString("es-AR", { month: "long", year: "numeric" });
+    return /*#__PURE__*/React.createElement("div", null,
+      /*#__PURE__*/React.createElement("div", { className: "flex items-center justify-between mb-4" },
+        /*#__PURE__*/React.createElement("button", {
+          onClick: () => setMonthOffset(o => o - 1),
+          className: "p-2", style: { color: C.text }
+        }, /*#__PURE__*/React.createElement(Icon, { name: "chevronLeft", size: 20 })),
+        /*#__PURE__*/React.createElement("span", { className: "font-bold text-base uppercase", style: { color: C.text } },
+          monthName
+        ),
+        /*#__PURE__*/React.createElement("button", {
+          onClick: () => setMonthOffset(o => Math.min(0, o + 1)),
+          className: "p-2", style: { color: monthOffset === 0 ? C.textDim2 : C.text }
+        }, /*#__PURE__*/React.createElement(Icon, { name: "chevronRight", size: 20 }))
+      ),
+      /*#__PURE__*/React.createElement("div", { className: "grid grid-cols-7 gap-1 mb-1" },
+        ["L","M","X","J","V","S","D"].map(d =>
+          /*#__PURE__*/React.createElement("div", { key: d, className: "text-center text-xs font-bold", style: { color: C.textDim2 } }, d)
+        )
+      ),
+      /*#__PURE__*/React.createElement("div", { className: "grid grid-cols-7 gap-1" },
+        days.map((iso, i) => {
+          if (!iso) return /*#__PURE__*/React.createElement("div", { key: "e"+i });
+          const color = dayColor(iso);
+          const isToday = iso === today;
+          const isFuture = iso > today;
+          return /*#__PURE__*/React.createElement("div", {
+            key: iso,
+            className: "aspect-square rounded-lg flex items-center justify-center text-xs font-semibold",
+            style: {
+              background: isFuture ? "transparent" : color ? color + "33" : C.surface,
+              border: isToday ? `2px solid ${C.green}` : color && !isFuture ? `1px solid ${color}66` : `1px solid transparent`,
+              color: isFuture ? C.textDim2 : color ? color : C.textDim,
+            }
+          }, parseInt(iso.slice(-2)));
+        })
+      )
+    );
+  }
+
+  // Year view: 12 mini grids in 2 columns
+  function renderYear() {
+    const now = new Date();
+    const year = now.getFullYear();
+    return /*#__PURE__*/React.createElement("div", null,
+      /*#__PURE__*/React.createElement("p", { className: "font-bold text-base uppercase mb-4", style: { color: C.text } }, year),
+      /*#__PURE__*/React.createElement("div", { className: "grid grid-cols-2 gap-4" },
+        Array.from({ length: 12 }, (_, m) => {
+          const firstDay = new Date(year, m, 1);
+          const lastDay = new Date(year, m + 1, 0);
+          const startDow = (firstDay.getDay() + 6) % 7;
+          const days = [];
+          for (let i = 0; i < startDow; i++) days.push(null);
+          for (let d = 1; d <= lastDay.getDate(); d++) {
+            const iso = `${year}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            days.push(iso);
+          }
+          const mName = firstDay.toLocaleDateString("es-AR", { month: "short" });
+          return /*#__PURE__*/React.createElement("div", { key: m },
+            /*#__PURE__*/React.createElement("p", { className: "text-xs font-bold uppercase mb-1", style: { color: C.textDim } }, mName),
+            /*#__PURE__*/React.createElement("div", { className: "grid grid-cols-7 gap-0.5" },
+              days.map((iso, i) => {
+                if (!iso) return /*#__PURE__*/React.createElement("div", { key: "e"+i, className: "aspect-square" });
+                const color = dayColor(iso);
+                const isFuture = iso > todayISO();
+                return /*#__PURE__*/React.createElement("div", {
+                  key: iso,
+                  className: "aspect-square rounded-sm",
+                  style: { background: isFuture ? "transparent" : color ? color + "55" : C.surface2 }
+                });
+              })
+            )
+          );
+        })
+      )
+    );
+  }
+
+  const now = new Date();
+  const targetDate = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+  const year = targetDate.getFullYear();
+  const month = targetDate.getMonth();
+
+  // Stats for current view
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const past = Array.from({ length: daysInMonth }, (_, i) => {
+    const d = String(i + 1).padStart(2, '0');
+    return `${year}-${String(month+1).padStart(2,'0')}-${d}`;
+  }).filter(iso => iso <= todayISO());
+  const hit = past.filter(iso => (proteinByDay[iso] || 0) >= proteinGoal).length;
+  const missed = past.filter(iso => proteinByDay[iso] !== undefined && (proteinByDay[iso] || 0) < proteinGoal).length;
+  const noData = past.filter(iso => proteinByDay[iso] === undefined).length;
+
+  return /*#__PURE__*/React.createElement("div", { className: "pb-10" },
+    /*#__PURE__*/React.createElement(BackHeader, { onBack: onBack, title: "Proteínas" }),
+    /*#__PURE__*/React.createElement("div", { className: "px-4 pt-4" },
+      /*#__PURE__*/React.createElement("div", { className: "flex rounded-full p-0.5 mb-5", style: { background: C.surface2 } },
+        [["month","Mes"],["year","Año"]].map(([k, l]) =>
+          /*#__PURE__*/React.createElement("button", {
+            key: k, onClick: () => setCalMode(k),
+            className: "flex-1 text-xs font-bold py-2 rounded-full",
+            style: calMode === k ? { background: C.green, color: "#fff" } : { color: C.textDim }
+          }, l)
+        )
+      ),
+      calMode === "month" ? renderMonth(year, month) : renderYear(),
+      calMode === "month" && /*#__PURE__*/React.createElement("div", { className: "flex gap-3 mt-5" },
+        /*#__PURE__*/React.createElement("div", { className: "flex-1 rounded-2xl p-3 text-center", style: { background: C.surface, border: `1px solid ${C.border}` } },
+          /*#__PURE__*/React.createElement("p", { className: "text-2xl font-bold", style: { color: C.green, fontVariantNumeric: "tabular-nums" } }, hit),
+          /*#__PURE__*/React.createElement("p", { className: "text-xs mt-1", style: { color: C.textDim } }, "Días cumplidos")
+        ),
+        /*#__PURE__*/React.createElement("div", { className: "flex-1 rounded-2xl p-3 text-center", style: { background: C.surface, border: `1px solid ${C.border}` } },
+          /*#__PURE__*/React.createElement("p", { className: "text-2xl font-bold", style: { color: C.red, fontVariantNumeric: "tabular-nums" } }, missed),
+          /*#__PURE__*/React.createElement("p", { className: "text-xs mt-1", style: { color: C.textDim } }, "Días fallidos")
+        ),
+        /*#__PURE__*/React.createElement("div", { className: "flex-1 rounded-2xl p-3 text-center", style: { background: C.surface, border: `1px solid ${C.border}` } },
+          /*#__PURE__*/React.createElement("p", { className: "text-2xl font-bold", style: { color: C.textDim, fontVariantNumeric: "tabular-nums" } }, noData),
+          /*#__PURE__*/React.createElement("p", { className: "text-xs mt-1", style: { color: C.textDim } }, "Sin registro")
+        )
+      ),
+      /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-4 mt-4" },
+        [[C.green, "Cumplida (≥100%)"],[C.orange, "Parcial (50-99%)"],[C.red, "No cumplida (<50%)"]].map(([color, label]) =>
+          /*#__PURE__*/React.createElement("div", { key: label, className: "flex items-center gap-1.5" },
+            /*#__PURE__*/React.createElement("div", { style: { width: 10, height: 10, borderRadius: 3, background: color } }),
+            /*#__PURE__*/React.createElement("span", { className: "text-xs", style: { color: C.textDim } }, label)
+          )
+        )
+      )
+    )
+  );
+}
+
+
 function ProgressFlow({
   routines,
   logs,
@@ -3257,12 +3468,19 @@ function ProgressFlow({
   onDismissInsight,
   onRefineInsight
 }) {
-  const [view, setView] = useState("dashboard"); // dashboard | insights | detail
+  const [view, setView] = useState("dashboard"); // dashboard | insights | detail | protein-calendar
   const [period, setPeriod] = useState("month");
   const [exercisePeriod, setExercisePeriod] = useState("month");
   const [routineId, setRoutineId] = useState(null);
   const [exerciseName, setExerciseName] = useState(null);
   const routine = routines.find(r => r.id === routineId);
+  if (view === "protein-calendar") {
+    return /*#__PURE__*/React.createElement(ProteinCalendar, {
+      nutrition: nutrition,
+      goals: goals,
+      onBack: () => setView("dashboard")
+    });
+  }
   if (view === "insights") {
     return /*#__PURE__*/React.createElement(InsightsScreen, {
       logs: logs,
@@ -3382,6 +3600,14 @@ function ProgressFlow({
       size: 18,
       color: C.textDim2
     })), /*#__PURE__*/React.createElement("button", {
+      onClick: () => setView("protein-calendar"),
+      className: "w-full flex items-center justify-between rounded-2xl px-4 py-3.5",
+      style: { background: C.surface, border: `1px solid ${C.border}` }
+    }, /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-3" },
+      /*#__PURE__*/React.createElement(Icon, { name: "calendar", size: 18, color: C.textDim }),
+      /*#__PURE__*/React.createElement("span", { className: "font-semibold", style: { color: C.text } }, "Calendario de proteínas")
+    ), /*#__PURE__*/React.createElement(Icon, { name: "chevronRight", size: 18, color: C.textDim2 })),
+    /*#__PURE__*/React.createElement("button", {
       onClick: () => setView("detail"),
       className: "w-full flex items-center justify-between rounded-2xl px-4 py-3.5",
       style: {
@@ -4711,7 +4937,10 @@ function MainApp({
     onDone: () => setRutinasView({
       type: "detail",
       id: rutinasView.id
-    })
+    }),
+    lastSession: logs.filter(l => l.routineId === rutinasView.id && l.exercises && l.exercises.length > 0)
+      .sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0))
+      .find(l => l.date < todayISO()) || null
   }), tab === "rutinas" && rutinasView?.type === "editSession" && /*#__PURE__*/React.createElement(SessionEditScreen, {
     log: logs.find(l => l.id === rutinasView.sessionId),
     onCancel: () => setRutinasView(null),
