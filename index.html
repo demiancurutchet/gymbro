@@ -761,7 +761,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "1.9.6";
+const APP_VERSION = "2.0.1";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -3178,12 +3178,64 @@ function InsightsScreen({
   dismissedInsights,
   refinedInsights,
   onDismissInsight,
-  onRefineInsight
+  onRefineInsight,
+  insightsContext,
+  onUpdateContext
 }) {
   const { sessions, list: rawList } = buildInsights(logs, nutrition, proteinGoal);
   const [refineTarget, setRefineTarget] = useState(null);
   const [refineNote, setRefineNote] = useState("");
+  const [editingContext, setEditingContext] = useState(false);
+  const [contextDraft, setContextDraft] = useState(insightsContext || "");
+  const [aiAnalysis, setAiAnalysis] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
   const list = rawList.filter(ins => !(dismissedInsights || []).includes(ins.id));
+
+  function buildDataSummary() {
+    const sortedSessions = sessions.slice().sort((a,b) => a.date < b.date ? -1 : 1);
+    const avgStrength = sessions.length ? (sessions.reduce((s,l) => s + (l.strength||0), 0) / sessions.length).toFixed(1) : "N/A";
+    const avgEndurance = sessions.length ? (sessions.reduce((s,l) => s + (l.endurance||0), 0) / sessions.length).toFixed(1) : "N/A";
+    const lastN = sortedSessions.slice(-5).map(l => 
+      `  - ${l.date}: fuerza ${l.strength}/10, resistencia ${l.endurance}/10${l.hardestMuscle ? ", más costoso: " + l.hardestMuscle : ""}${l.painAreas && l.painAreas.length ? ", dolor en: " + l.painAreas.join("/") : ""}`
+    ).join("\n");
+    const nutritionDays = {};
+    (nutrition || []).forEach(e => { nutritionDays[e.date] = (nutritionDays[e.date]||0) + (Number(e.protein)||0); });
+    const nutritionEntries = Object.entries(nutritionDays).sort((a,b) => b[0] > a[0] ? 1 : -1).slice(0, 14);
+    const avgProtein = nutritionEntries.length ? Math.round(nutritionEntries.reduce((s,[,v]) => s+v, 0) / nutritionEntries.length) : 0;
+    return [
+      "ENTRENAMIENTO:",
+      "Total de sesiones puntuadas: " + sessions.length,
+      "Fuerza promedio: " + avgStrength + "/10",
+      "Resistencia promedio: " + avgEndurance + "/10",
+      "Últimas 5 sesiones:",
+      lastN || "  Sin datos",
+      "",
+      "NUTRICIÓN (últimos 14 días registrados):",
+      "Proteína promedio diaria: " + avgProtein + "g (meta: " + proteinGoal + "g)",
+      "Días con datos: " + nutritionEntries.length
+    ].join("\n");
+  }
+
+  async function runAiAnalysis() {
+    setAiLoading(true);
+    setAiError("");
+    setAiAnalysis(null);
+    try {
+      const res = await fetch("/api/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ context: insightsContext, dataSummary: buildDataSummary() })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error desconocido");
+      setAiAnalysis(data.analysis);
+    } catch(e) {
+      setAiError(e.message);
+    } finally {
+      setAiLoading(false);
+    }
+  }
   return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "pb-10"
   }, /*#__PURE__*/React.createElement(BackHeader, {
@@ -3212,7 +3264,87 @@ function InsightsScreen({
     style: {
       color: C.textDim
     }
-  }, "Patrones en tus propios datos (", sessions.length, " sesiones puntuadas) — no son científicos, pero te pueden dar una pista."), /*#__PURE__*/React.createElement("div", {
+  }, "Patrones en tus propios datos (", sessions.length, " sesiones puntuadas)."),
+  /*#__PURE__*/React.createElement("div", {
+    className: "rounded-2xl p-4 mb-4",
+    style: { background: "rgba(44,111,255,0.08)", border: `1px solid rgba(44,111,255,0.2)` }
+  },
+    /*#__PURE__*/React.createElement("div", { className: "flex items-center justify-between mb-2" },
+      /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-2" },
+        /*#__PURE__*/React.createElement("span", { className: "text-sm font-bold", style: { color: C.text } }, "Análisis con IA"),
+        /*#__PURE__*/React.createElement("span", { className: "text-xs px-2 py-0.5 rounded-full font-medium", style: { background: C.green, color: C.greenText } }, "Claude")
+      ),
+      !aiLoading && /*#__PURE__*/React.createElement("button", {
+        onClick: runAiAnalysis,
+        className: "text-xs font-bold px-3 py-1.5 rounded-full",
+        style: { background: C.green, color: C.greenText }
+      }, aiAnalysis ? "Regenerar" : "Analizar")
+    ),
+    aiLoading && /*#__PURE__*/React.createElement("div", { className: "py-4 text-center" },
+      /*#__PURE__*/React.createElement("p", { className: "text-xs animate-pulse", style: { color: C.textDim } }, "Analizando tus datos...")
+    ),
+    aiError && /*#__PURE__*/React.createElement("p", { className: "text-xs", style: { color: C.red } },
+      aiError.includes("ANTHROPIC_API_KEY") 
+        ? "Falta configurar la API key en Vercel. Agregá la variable ANTHROPIC_API_KEY en el dashboard de Vercel → Settings → Environment Variables."
+        : aiError
+    ),
+    aiAnalysis && /*#__PURE__*/React.createElement("div", { className: "space-y-3 mt-1" },
+      aiAnalysis.split("\n").filter(l => l.trim()).map((line, i) =>
+        /*#__PURE__*/React.createElement("p", { key: i, className: "text-sm leading-relaxed", style: { color: C.text } }, line)
+      )
+    ),
+    !aiAnalysis && !aiLoading && !aiError && /*#__PURE__*/React.createElement("p", {
+      className: "text-xs", style: { color: C.textDim }
+    }, insightsContext 
+      ? "Listo para analizar tus datos con tus instrucciones guardadas." 
+      : "Tocá 'Analizar' para que Claude lea tus datos y genere un análisis personalizado. Podés agregarle instrucciones con el lápiz de arriba.")
+  ),
+  editingContext ? /*#__PURE__*/React.createElement("div", {
+    className: "rounded-2xl p-4 mb-4",
+    style: { background: C.surface, border: `1px solid ${C.border}` }
+  },
+    /*#__PURE__*/React.createElement("p", { className: "text-sm font-bold mb-1", style: { color: C.text } }, "Instrucciones al analizador"),
+    /*#__PURE__*/React.createElement("p", { className: "text-xs mb-3", style: { color: C.textDim } },
+      "Decile qué cruzar, qué ignorar o qué tiene más peso para vos. Estas instrucciones se guardan y el sistema las tiene en cuenta."
+    ),
+    /*#__PURE__*/React.createElement("textarea", {
+      value: contextDraft,
+      onChange: e => setContextDraft(e.target.value),
+      placeholder: "Ej: 'Cruzá los días que entrené dos días seguidos con mi nivel de fuerza.' / 'Ignorá correlaciones con alimentos que como todos los días.' / 'Prestá más atención al descanso entre sesiones que a la alimentación.'",
+      className: "w-full rounded-xl p-3 text-sm outline-none resize-none",
+      rows: 5,
+      style: { background: C.surface2, color: C.text, border: `1px solid ${C.border}` }
+    }),
+    /*#__PURE__*/React.createElement("div", { className: "flex gap-3 mt-3" },
+      /*#__PURE__*/React.createElement("button", {
+        onClick: () => { onUpdateContext(contextDraft); setEditingContext(false); },
+        className: "flex-1 rounded-xl py-2.5 text-sm font-semibold",
+        style: { background: C.green, color: C.greenText }
+      }, "Guardar instrucciones"),
+      /*#__PURE__*/React.createElement("button", {
+        onClick: () => setEditingContext(false),
+        className: "px-4 rounded-xl py-2.5 text-sm",
+        style: { color: C.textDim, border: `1px solid ${C.border}` }
+      }, "Cancelar")
+    )
+  ) : /*#__PURE__*/React.createElement("div", {
+    className: "rounded-2xl p-4 mb-4",
+    style: { background: C.surface2 }
+  },
+    /*#__PURE__*/React.createElement("div", { className: "flex items-start justify-between gap-2" },
+      /*#__PURE__*/React.createElement("div", { className: "flex-1 min-w-0" },
+        /*#__PURE__*/React.createElement("p", { className: "text-xs font-bold uppercase mb-1", style: { color: C.textDim } }, "Tus instrucciones al analizador"),
+        insightsContext
+          ? /*#__PURE__*/React.createElement("p", { className: "text-xs", style: { color: C.text } }, insightsContext)
+          : /*#__PURE__*/React.createElement("p", { className: "text-xs italic", style: { color: C.textDim } }, "Ninguna todavía — tocá el lápiz para agregar contexto")
+      ),
+      /*#__PURE__*/React.createElement("button", {
+        onClick: () => { setContextDraft(insightsContext || ""); setEditingContext(true); },
+        className: "shrink-0 p-1"
+      }, /*#__PURE__*/React.createElement(Icon, { name: "pencil", size: 15, color: C.blue }))
+    )
+  ),
+  /*#__PURE__*/React.createElement("div", {
     className: "space-y-3"
   }, list.map((ins, i) => /*#__PURE__*/React.createElement("div", {
     key: i,
@@ -3306,8 +3438,8 @@ function ProteinCalendar({ nutrition, goals, onBack }) {
   function dayColor(dateIso) {
     if (!proteinByDay[dateIso] && proteinByDay[dateIso] !== 0) return null; // no data
     const pct = proteinByDay[dateIso] / proteinGoal;
-    if (pct >= 1) return C.green;
-    if (pct >= 0.5) return C.orange;
+    if (pct >= 0.9) return C.green;
+    if (pct >= 0.75) return C.orange;
     return C.red;
   }
 
@@ -3414,8 +3546,8 @@ function ProteinCalendar({ nutrition, goals, onBack }) {
     const d = String(i + 1).padStart(2, '0');
     return `${year}-${String(month+1).padStart(2,'0')}-${d}`;
   }).filter(iso => iso <= todayISO());
-  const hit = past.filter(iso => (proteinByDay[iso] || 0) >= proteinGoal).length;
-  const missed = past.filter(iso => proteinByDay[iso] !== undefined && (proteinByDay[iso] || 0) < proteinGoal).length;
+  const hit = past.filter(iso => (proteinByDay[iso] || 0) >= proteinGoal * 0.9).length;
+  const missed = past.filter(iso => proteinByDay[iso] !== undefined && (proteinByDay[iso] || 0) < proteinGoal * 0.9).length;
   const noData = past.filter(iso => proteinByDay[iso] === undefined).length;
 
   return /*#__PURE__*/React.createElement("div", { className: "pb-10" },
@@ -3446,7 +3578,7 @@ function ProteinCalendar({ nutrition, goals, onBack }) {
         )
       ),
       /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-4 mt-4" },
-        [[C.green, "Cumplida (≥100%)"],[C.orange, "Parcial (50-99%)"],[C.red, "No cumplida (<50%)"]].map(([color, label]) =>
+        [[C.green, "Cumplida (≥90%)"],[C.orange, "Parcial (75-89%)"],[C.red, "No cumplida (<75%)"]].map(([color, label]) =>
           /*#__PURE__*/React.createElement("div", { key: label, className: "flex items-center gap-1.5" },
             /*#__PURE__*/React.createElement("div", { style: { width: 10, height: 10, borderRadius: 3, background: color } }),
             /*#__PURE__*/React.createElement("span", { className: "text-xs", style: { color: C.textDim } }, label)
@@ -3466,7 +3598,9 @@ function ProgressFlow({
   dismissedInsights,
   refinedInsights,
   onDismissInsight,
-  onRefineInsight
+  onRefineInsight,
+  insightsContext,
+  onUpdateContext
 }) {
   const [view, setView] = useState("dashboard"); // dashboard | insights | detail | protein-calendar
   const [period, setPeriod] = useState("month");
@@ -3490,7 +3624,9 @@ function ProgressFlow({
       dismissedInsights: dismissedInsights,
       refinedInsights: refinedInsights,
       onDismissInsight: onDismissInsight,
-      onRefineInsight: onRefineInsight
+      onRefineInsight: onRefineInsight,
+      insightsContext: insightsContext,
+      onUpdateContext: onUpdateContext
     });
   }
   if (view === "dashboard") {
@@ -3601,7 +3737,7 @@ function ProgressFlow({
       color: C.textDim2
     })), /*#__PURE__*/React.createElement("button", {
       onClick: () => setView("protein-calendar"),
-      className: "w-full flex items-center justify-between rounded-2xl px-4 py-3.5",
+      className: "w-full flex items-center justify-between rounded-2xl px-4 py-3.5 mt-3",
       style: { background: C.surface, border: `1px solid ${C.border}` }
     }, /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-3" },
       /*#__PURE__*/React.createElement(Icon, { name: "calendar", size: 18, color: C.textDim }),
@@ -4489,6 +4625,7 @@ function MainApp({
   const [goals, setGoals] = useState(null);
   const [gapDismissedAt, setGapDismissedAt] = useState(null);
   const [dismissedInsights, setDismissedInsights] = useState([]);
+  const [insightsContext, setInsightsContext] = useState("");
   const [refinedInsights, setRefinedInsights] = useState([]);
   const [gapPrompt, setGapPrompt] = useState(null);
   const [error, setError] = useState("");
@@ -4541,6 +4678,7 @@ function MainApp({
       setGapDismissedAt(settings.nutritionGapDismissedAt || null);
       setDismissedInsights(settings.dismissedInsights || []);
       setRefinedInsights(settings.refinedInsights || []);
+      setInsightsContext(settings.insightsContext || "");
       setHiddenFoods(settings.hiddenFoods || []);
       setCustomFoods(settings.customFoods || []);
       // Phase 2: routines (background, non-blocking)
@@ -4808,6 +4946,12 @@ function MainApp({
     await deleteSession(id);
     setSuccessMessage("La sesión fue eliminada");
   }
+  async function updateInsightsContext(text) {
+    setInsightsContext(text);
+    try {
+      await db.collection("settings").doc(uid).set({ ownerUid: uid, insightsContext: text }, { merge: true });
+    } catch(e) {}
+  }
   async function dismissInsight(id) {
     const next = [...dismissedInsights, id];
     setDismissedInsights(next);
@@ -4954,7 +5098,9 @@ function MainApp({
     dismissedInsights: dismissedInsights,
     refinedInsights: refinedInsights,
     onDismissInsight: dismissInsight,
-    onRefineInsight: refineInsight
+    onRefineInsight: refineInsight,
+    insightsContext: insightsContext,
+    onUpdateContext: updateInsightsContext
   }), tab === "proteina" && /*#__PURE__*/React.createElement(NutritionScreen, {
     entries: nutrition,
     hiddenFoods: hiddenFoods,
