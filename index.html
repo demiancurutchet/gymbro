@@ -761,7 +761,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.0.1";
+const APP_VERSION = "2.0.3";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -4116,7 +4116,7 @@ function NutritionScreen({
   }
   function addCustom() {
     const n = customName.trim();
-    if (!n || !customProtein) return;
+    if (!n) return;
     onAdd(n, Number(customProtein), Number(customCarbs) || 0, selectedDate);
     onSaveCustomFood(n, Number(customProtein), Number(customCarbs) || 0);
     setCustomName("");
@@ -4335,23 +4335,7 @@ function NutritionScreen({
       className: "text-xs font-medium mb-3 flex items-center gap-1",
       style: { color: C.textDim }
     }, "\u2715 Cerrar cat\xE1logo"),
-    /*#__PURE__*/React.createElement("div", { className: "relative mb-3" },
-      /*#__PURE__*/React.createElement("div", {
-        className: "absolute left-3 top-0 bottom-0 flex items-center pointer-events-none"
-      }, /*#__PURE__*/React.createElement(Icon, { name: "search", size: 16, color: "#5E5E5E" })),
-      /*#__PURE__*/React.createElement("input", {
-        autoFocus: true,
-        value: query,
-        onChange: e => setQuery(e.target.value),
-        placeholder: "Buscar alimento...",
-        className: "w-full rounded-xl py-2.5 text-sm outline-none placeholder:text-[#5E5E5E]",
-        style: { background: C.surface, color: C.text, border: `1px solid ${C.border}`, paddingLeft: 36, paddingRight: query ? 36 : 16 }
-      }),
-      query && /*#__PURE__*/React.createElement("button", {
-        onClick: () => setQuery(""),
-        className: "absolute right-3 top-0 bottom-0 flex items-center"
-      }, /*#__PURE__*/React.createElement(Icon, { name: "x", size: 16, color: C.textDim }))
-    ),
+
     /*#__PURE__*/React.createElement("div", { className: "space-y-2 mb-3" },
       filteredFoods.length === 0 && /*#__PURE__*/React.createElement("p", {
         className: "text-sm text-center py-6", style: { color: C.textDim }
@@ -4680,7 +4664,17 @@ function MainApp({
       setRefinedInsights(settings.refinedInsights || []);
       setInsightsContext(settings.insightsContext || "");
       setHiddenFoods(settings.hiddenFoods || []);
-      setCustomFoods(settings.customFoods || []);
+      const cloudFoods = settings.customFoods || [];
+      let localFoods = [];
+      try { localFoods = JSON.parse(localStorage.getItem("gymbro_custom_foods_" + uid) || "[]"); } catch(e) {}
+      const merged = [...cloudFoods];
+      localFoods.forEach(lf => {
+        if (!merged.some(cf => cf.name.toLowerCase() === lf.name.toLowerCase()) && !FOODS.some(f => f.name.toLowerCase() === lf.name.toLowerCase())) merged.push(lf);
+      });
+      setCustomFoods(merged);
+      if (merged.length > cloudFoods.length) {
+        db.collection("settings").doc(uid).set({ ownerUid: uid, customFoods: merged }, { merge: true }).catch(() => {});
+      }
       // Phase 2: routines (background, non-blocking)
       const rSnap = await db.collection("routines").where("ownerUid", "==", uid).get();
       const loadedRoutines = rSnap.docs.map(d => ({ id: d.id, name: d.data().name, exercises: d.data().exercises || [], order: d.data().order }));
@@ -4794,14 +4788,13 @@ function MainApp({
     removeFood(candidates[candidates.length - 1].id);
   }
   async function hideFood(name) {
-    setHiddenFoods(prev => [...(prev || []), name]);
+    const nextHidden = [...(hiddenFoods || []), name];
+    setHiddenFoods(nextHidden);
     try {
       await db.collection("settings").doc(uid).set({
         ownerUid: uid,
-        hiddenFoods: firebase.firestore.FieldValue.arrayUnion(name)
-      }, {
-        merge: true
-      });
+        hiddenFoods: nextHidden
+      }, { merge: true });
     } catch (e) {
       setError("No se pudo guardar el cambio.");
     }
@@ -4820,23 +4813,25 @@ function MainApp({
     }
   }
   async function saveCustomFood(name, protein, carbs) {
-    const alreadyExists = FOODS.some(f => f.name === name) || (customFoods || []).some(f => f.name === name);
-    if (alreadyExists) return;
-    const entry = {
-      name,
-      protein,
-      carbs
-    };
-    setCustomFoods(prev => [...(prev || []), entry]);
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const existing = customFoods || [];
+    const inBuiltin = FOODS.some(f => f.name.toLowerCase() === trimmed.toLowerCase());
+    if (inBuiltin) return;
+    const entry = { name: trimmed, protein: Number(protein) || 0, carbs: Number(carbs) || 0 };
+    const prevCustom = existing.find(f => f.name.toLowerCase() === trimmed.toLowerCase());
+    const nextCustomFoods = prevCustom
+      ? existing.map(f => f.name.toLowerCase() === trimmed.toLowerCase() ? entry : f)
+      : [...existing, entry];
+    setCustomFoods(nextCustomFoods);
+    try { localStorage.setItem("gymbro_custom_foods_" + uid, JSON.stringify(nextCustomFoods)); } catch(e) {}
     try {
       await db.collection("settings").doc(uid).set({
         ownerUid: uid,
-        customFoods: firebase.firestore.FieldValue.arrayUnion(entry)
-      }, {
-        merge: true
-      });
+        customFoods: nextCustomFoods
+      }, { merge: true });
     } catch (e) {
-      setError("No se pudo guardar el alimento para la próxima vez.");
+      setError("No se pudo guardar. Guardado localmente en este dispositivo.");
     }
   }
   async function createRoutine(name) {
