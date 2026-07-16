@@ -5126,7 +5126,7 @@ function Root() {
   const [user, setUser] = useState(undefined); // undefined = checking
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(u => setUser(u || null));
+    const unsubscribe = auth.onAuthStateChanged(u => setUser(u || null)); 
     return unsubscribe;
   }, []);
   if (user === undefined) return /*#__PURE__*/React.createElement(LoadingScreen, null);
