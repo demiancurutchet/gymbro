@@ -761,7 +761,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.0.4";
+const APP_VERSION = "2.0.7";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -4090,7 +4090,7 @@ function NutritionScreen({
   function countFor(name) {
     return todayEntries.filter(e => e.name === name).length;
   }
-  const visibleFoods = [...FOODS, ...customFoods].filter(f => !hiddenFoods.includes(f.name));
+  const visibleFoods = [...FOODS, ...(customFoods || [])].filter(f => !(hiddenFoods || []).includes(f.name));
   const filteredFoods = query.trim() ? visibleFoods.filter(f => f.name.toLowerCase().includes(query.trim().toLowerCase())) : visibleFoods;
   const shownFoods = query.trim() || showAllFoods ? filteredFoods : filteredFoods.slice(0, 4);
   const recentFoods = (() => {
@@ -4714,6 +4714,17 @@ function MainApp({
       localFoods.forEach(lf => {
         if (!merged.some(cf => cf.name.toLowerCase() === lf.name.toLowerCase()) && !FOODS.some(f => f.name.toLowerCase() === lf.name.toLowerCase())) merged.push(lf);
       });
+      // Auto-import foods from nutrition history that aren't in catalog yet
+      const nutritionEntries = nSnap.docs.map(d => d.data());
+      const knownNames = new Set([
+        ...FOODS.map(f => f.name.toLowerCase()),
+        ...merged.map(f => f.name.toLowerCase())
+      ]);
+      nutritionEntries.forEach(e => {
+        if (!e.name || !e.protein || knownNames.has(e.name.toLowerCase())) return;
+        merged.push({ name: e.name, protein: Number(e.protein) || 0, carbs: Number(e.carbs) || 0 });
+        knownNames.add(e.name.toLowerCase());
+      });
       setCustomFoods(merged);
       if (merged.length > cloudFoods.length) {
         db.collection("settings").doc(uid).set({ ownerUid: uid, customFoods: merged }, { merge: true }).catch(() => {});
@@ -4801,6 +4812,20 @@ function MainApp({
         carbs: carbs || 0,
         loggedAt
       }]);
+      // Auto-save to catalog: every food logged gets saved to customFoods automatically
+      const inBuiltin = FOODS.some(f => f.name.toLowerCase() === name.toLowerCase());
+      if (!inBuiltin) {
+        setCustomFoods(prev => {
+          const list = prev || [];
+          const exists = list.some(f => f.name.toLowerCase() === name.toLowerCase());
+          if (exists) return list;
+          const entry = { name, protein: Number(protein) || 0, carbs: Number(carbs) || 0 };
+          const next = [...list, entry];
+          db.collection("settings").doc(uid).set({ ownerUid: uid, customFoods: next }, { merge: true }).catch(() => {});
+          try { localStorage.setItem("gymbro_custom_foods_" + uid, JSON.stringify(next)); } catch(e) {}
+          return next;
+        });
+      }
     } catch (e) {
       setError("No se pudo agregar el alimento.");
     }
