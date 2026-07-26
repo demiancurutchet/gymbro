@@ -315,7 +315,8 @@ function cloneExerciseForSession(ex) {
   };
 }
 function buildExercisesFromLastSession(routine, lastSession) {
-  if (!lastSession) return routine.exercises.map(cloneExerciseForSession);
+  if (!lastSession) { console.log("[prefill] No last session found for", routine.name); return routine.exercises.map(cloneExerciseForSession); }
+  console.log("[prefill] Using last session from", lastSession.date, "with", lastSession.exercises?.length, "exercises");
   return routine.exercises.map(routineEx => {
     const lastEx = lastSession.exercises.find(e =>
       e.name.trim().toLowerCase() === routineEx.name.trim().toLowerCase()
@@ -761,7 +762,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.0.7";
+const APP_VERSION = "2.0.8";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1362,6 +1363,11 @@ function ExercisePlanEditor({
   const [custom, setCustom] = useState(false);
   const [groups, setGroups] = useState(() => setsToGroups(sets.filter(s => s.type === "normal")));
   const dropSets = sets.filter(s => s.type === "drop");
+  // Sync groups when external sets change (e.g. prefilled from last session)
+  const setsKey = sets.map(s => s.id + s.reps + s.weight).join(",");
+  React.useEffect(() => {
+    if (!custom) setGroups(setsToGroups(sets.filter(s => s.type === "normal")));
+  }, [setsKey]);
   function enterCustom() {
     setGroups(setsToGroups(sets.filter(s => s.type === "normal")));
     setCustom(true);
@@ -5145,9 +5151,16 @@ function MainApp({
       type: "detail",
       id: rutinasView.id
     }),
-    lastSession: logs.filter(l => l.routineId === rutinasView.id && l.exercises && l.exercises.length > 0)
-      .sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : 0))
-      .find(l => l.date < todayISO()) || null
+    lastSession: (() => {
+      const routineLogs = logs
+        .filter(l => l.routineId === rutinasView.id)
+        .sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : (b.startedAt || "").localeCompare(a.startedAt || "")));
+      // Find the most recent past session that has exercise data
+      return routineLogs.find(l => l.date < todayISO() && l.exercises && l.exercises.length > 0)
+        // Fallback: any past session even without exercise data
+        || routineLogs.find(l => l.date < todayISO())
+        || null;
+    })()
   }), tab === "rutinas" && rutinasView?.type === "editSession" && /*#__PURE__*/React.createElement(SessionEditScreen, {
     log: logs.find(l => l.id === rutinasView.sessionId),
     onCancel: () => setRutinasView(null),
