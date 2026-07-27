@@ -762,7 +762,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.0.8";
+const APP_VERSION = "2.0.9";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -2575,7 +2575,12 @@ function SessionScreen({
   };
   const draft = loadDraft();
   const [date, setDate] = useState(draft ? draft.date : todayISO());
-  const [exercises, setExercises] = useState(() => draft ? draft.exercises : buildExercisesFromLastSession(routine, lastSession));
+  const [exercises, setExercises] = useState(() => {
+    if (draft) { console.log("[session] Using draft exercises"); return draft.exercises; }
+    const built = buildExercisesFromLastSession(routine, lastSession);
+    console.log("[session] Built exercises:", built.map(e => e.name + ": " + e.sets.map(s => s.reps + "x" + s.weight).join(", ")));
+    return built;
+  });
   const [startedAt] = useState(() => draft ? draft.startedAt : new Date().toISOString());
   const [focusedIndex, setFocusedIndex] = useState(null);
   const [completed, setCompleted] = useState(() => draft ? new Set(draft.completed) : new Set());
