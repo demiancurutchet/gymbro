@@ -761,7 +761,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.3.2";
+const APP_VERSION = "2.3.3";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -3033,7 +3033,7 @@ function PostSessionWizard({
     /*#__PURE__*/React.createElement("p", {
       className: "text-2xl font-bold text-center",
       style: { color: C.text }
-    }, "¿Te duele algo?"),
+    }, "¿Te dolió algo?"),
     /*#__PURE__*/React.createElement("p", {
       className: "text-base text-center",
       style: { color: C.textDim }
@@ -3153,30 +3153,6 @@ function SessionEditScreen({
     bodyweight: ex.bodyweight,
     onToggleBodyweight: v => toggleBodyweight(idx, v)
   }))), /*#__PURE__*/React.createElement("div", {
-    className: "rounded-2xl p-4 space-y-4",
-    style: {
-      background: C.surface,
-      border: `1px solid ${C.border}`
-    }
-  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
-    className: "text-sm font-semibold mb-3",
-    style: {
-      color: C.text
-    }
-  }, "Fuerza"), /*#__PURE__*/React.createElement(RadioRow, {
-    options: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    value: strength,
-    onChange: setStrength
-  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
-    className: "text-sm font-semibold mb-3",
-    style: {
-      color: C.text
-    }
-  }, "Resistencia"), /*#__PURE__*/React.createElement(RadioRow, {
-    options: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    value: endurance,
-    onChange: setEndurance
-  }))), /*#__PURE__*/React.createElement("div", {
     className: "rounded-2xl p-4 space-y-3",
     style: {
       background: C.surface,
@@ -3187,33 +3163,7 @@ function SessionEditScreen({
     style: {
       color: C.text
     }
-  }, "¿Qué te costó más?"), /*#__PURE__*/React.createElement(ChipPicker, {
-    options: MUSCLE_GROUPS,
-    selected: hardest,
-    onPick: setHardest,
-    multi: false
-  }), /*#__PURE__*/React.createElement("p", {
-    className: "text-sm font-semibold mt-2",
-    style: {
-      color: C.text
-    }
-  }, "¿Y lo que menos?"), /*#__PURE__*/React.createElement(ChipPicker, {
-    options: MUSCLE_GROUPS,
-    selected: easiest,
-    onPick: setEasiest,
-    multi: false
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "rounded-2xl p-4 space-y-3",
-    style: {
-      background: C.surface,
-      border: `1px solid ${C.border}`
-    }
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "text-sm font-semibold",
-    style: {
-      color: C.text
-    }
-  }, "¿Te duele algo?"), /*#__PURE__*/React.createElement(ChipPicker, {
+  }, "¿Te dolió algo?"), /*#__PURE__*/React.createElement(ChipPicker, {
     options: PAIN_AREAS,
     selected: pain,
     onPick: togglePain,
