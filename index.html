@@ -24,7 +24,7 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 <style>
-  html, body { margin: 0; background: linear-gradient(0deg, #0d1a37, #04070b 90%); background-color: #03060d; font-family: 'Agdasima', -apple-system, sans-serif; }
+  html, body { margin: 0; background: linear-gradient(0deg, #0d1a37, #04070b 90%); background-color: #03060d; font-family: 'Agdasima', -apple-system, sans-serif; font-size: 17px; }
   * { box-sizing: border-box; }
   input[type=number]::-webkit-outer-spin-button,
   input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
@@ -315,8 +315,7 @@ function cloneExerciseForSession(ex) {
   };
 }
 function buildExercisesFromLastSession(routine, lastSession) {
-  if (!lastSession) { console.log("[prefill] No last session found for", routine.name); return routine.exercises.map(cloneExerciseForSession); }
-  console.log("[prefill] Using last session from", lastSession.date, "with", lastSession.exercises?.length, "exercises");
+  if (!lastSession) return routine.exercises.map(cloneExerciseForSession);
   return routine.exercises.map(routineEx => {
     const lastEx = lastSession.exercises.find(e =>
       e.name.trim().toLowerCase() === routineEx.name.trim().toLowerCase()
@@ -762,7 +761,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.1.0";
+const APP_VERSION = "2.2.0";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -2522,7 +2521,7 @@ function RoutineDetail({
     size: 16
   }), " Agregar ejercicio"), !editing && routine.exercises.length > 0 && /*#__PURE__*/React.createElement("button", {
     onClick: () => todaySession ? onEditTodaySession(todaySession.id) : onStartSession(),
-    className: "mt-6 w-full rounded-2xl py-3.5 text-base font-semibold",
+    className: "mt-6 w-full rounded-2xl py-5 text-xl font-bold",
     style: {
       background: C.green,
       color: C.greenText
@@ -2575,12 +2574,7 @@ function SessionScreen({
   };
   const draft = loadDraft();
   const [date, setDate] = useState(draft ? draft.date : todayISO());
-  const [exercises, setExercises] = useState(() => {
-    if (draft) { console.log("[session] Using draft exercises"); return draft.exercises; }
-    const built = buildExercisesFromLastSession(routine, lastSession);
-    console.log("[session] Built exercises:", built.map(e => e.name + ": " + e.sets.map(s => s.reps + "x" + s.weight).join(", ")));
-    return built;
-  });
+  const [exercises, setExercises] = useState(() => draft ? draft.exercises : buildExercisesFromLastSession(routine, lastSession));
   const [startedAt] = useState(() => draft ? draft.startedAt : new Date().toISOString());
   const [focusedIndex, setFocusedIndex] = useState(null);
   const [completed, setCompleted] = useState(() => draft ? new Set(draft.completed) : new Set());
@@ -2658,7 +2652,7 @@ function SessionScreen({
       }
     }), /*#__PURE__*/React.createElement("button", {
       onClick: () => markDone(focusedIndex),
-      className: "mt-6 w-full flex items-center justify-center gap-2 rounded-2xl py-3.5 text-base font-semibold",
+      className: "mt-6 w-full flex items-center justify-center gap-2 rounded-2xl py-5 text-xl font-bold",
       style: {
         background: C.green,
         color: C.greenText
@@ -2668,9 +2662,62 @@ function SessionScreen({
       size: 18
     }), " Listo, siguiente")));
   }
+  const RIR_OPTIONS = [
+    { label: "+3", sub: "me sobraban reps", rir: 3 },
+    { label: "+2", sub: "podría haber hecho 2 más", rir: 2 },
+    { label: "+1", sub: "casi al límite", rir: 1 },
+    { label: "0", sub: "llegué justo", rir: 0 },
+    { label: "✗ Fallé", sub: "no llegué a las reps", rir: -1 },
+  ];
+
   return /*#__PURE__*/React.createElement("div", {
     className: "pb-10"
-  }, /*#__PURE__*/React.createElement(BackHeader, {
+  },
+  rirSheet && /*#__PURE__*/React.createElement(React.Fragment, null,
+    /*#__PURE__*/React.createElement("div", {
+      onClick: () => confirmRir(null),
+      style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 40 }
+    }),
+    /*#__PURE__*/React.createElement("div", {
+      style: {
+        position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50,
+        background: "#1C1C1E", borderRadius: "24px 24px 0 0",
+        padding: "16px 20px 48px"
+      }
+    },
+      /*#__PURE__*/React.createElement("div", {
+        style: { width: 40, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.2)", margin: "0 auto 20px" }
+      }),
+      /*#__PURE__*/React.createElement("p", {
+        style: { color: C.text, fontSize: 22, fontWeight: "700", marginBottom: 4 }
+      }, rirSheet.exName),
+      /*#__PURE__*/React.createElement("p", {
+        style: { color: C.textDim, fontSize: 16, marginBottom: 20 }
+      }, "¿Cuánto te costó?"),
+      /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
+        RIR_OPTIONS.map(opt =>
+          /*#__PURE__*/React.createElement("button", {
+            key: opt.rir,
+            onClick: () => confirmRir(opt.rir),
+            style: {
+              background: opt.rir === -1 ? "rgba(255,69,58,0.15)" : "rgba(255,255,255,0.06)",
+              border: "none", borderRadius: 16, padding: "18px 20px",
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              cursor: "pointer", width: "100%"
+            }
+          },
+            /*#__PURE__*/React.createElement("span", {
+              style: { color: opt.rir === -1 ? C.red : C.text, fontSize: 20, fontWeight: "700" }
+            }, opt.label),
+            /*#__PURE__*/React.createElement("span", {
+              style: { color: C.textDim, fontSize: 15 }
+            }, opt.sub)
+          )
+        )
+      )
+    )
+  ),
+  /*#__PURE__*/React.createElement(BackHeader, {
     onBack: onCancel,
     title: "Sesión de hoy",
     right: /*#__PURE__*/React.createElement("button", {
@@ -2766,7 +2813,7 @@ function SessionScreen({
   })), /*#__PURE__*/React.createElement("button", {
     onClick: handleSave,
     disabled: !allDone || saving,
-    className: "mt-6 w-full rounded-2xl py-3.5 text-base font-semibold",
+    className: "mt-6 w-full rounded-2xl py-5 text-xl font-bold",
     style: {
       background: allDone ? C.green : C.surface2,
       color: allDone ? C.greenText : C.textDim2,
@@ -2824,14 +2871,10 @@ function PostSessionWizard({
   onDone
 }) {
   const [step, setStep] = useState("toast");
-  const [strength, setStrength] = useState(null);
-  const [endurance, setEndurance] = useState(null);
-  const [hardest, setHardest] = useState(null);
-  const [easiest, setEasiest] = useState(null);
   const [pain, setPain] = useState([]);
   useEffect(() => {
     if (step === "toast") {
-      const t = setTimeout(() => setStep("rating"), 1100);
+      const t = setTimeout(() => setStep("pain"), 1100);
       return () => clearTimeout(t);
     }
   }, [step]);
@@ -2846,131 +2889,45 @@ function PostSessionWizard({
     }
   }
   function finish() {
-    onFinalize(sessionId, {
-      strength,
-      endurance,
-      hardestMuscle: hardest,
-      easiestMuscle: easiest,
-      painAreas: pain.filter(a => a !== "NADA")
-    });
+    onFinalize(sessionId, { painAreas: pain.filter(a => a !== "NADA") });
     onDone();
   }
   return /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-col items-center justify-center px-6",
-    style: {
-      minHeight: "100vh"
-    }
-  }, step === "toast" && /*#__PURE__*/React.createElement("div", {
-    className: "flex flex-col items-center gap-3 animate-in"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "w-16 h-16 rounded-full flex items-center justify-center",
-    style: {
-      background: "rgba(44,111,255,0.15)"
-    }
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: "check",
-    size: 28,
-    color: C.green
-  })), /*#__PURE__*/React.createElement("p", {
-    className: "text-lg font-semibold",
-    style: {
-      color: C.text
-    }
-  }, "¡Sesión guardada!")), step === "rating" && /*#__PURE__*/React.createElement("div", {
-    className: "w-full max-w-sm space-y-7 animate-in"
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "text-lg font-semibold text-center",
-    style: {
-      color: C.text
-    }
-  }, "¿Cómo te sentiste hoy?"), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
-    className: "text-sm mb-3 text-center",
-    style: {
-      color: C.textDim
-    }
-  }, "Fuerza"), /*#__PURE__*/React.createElement(RadioRow, {
-    options: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    value: strength,
-    onChange: setStrength
-  })), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
-    className: "text-sm mb-3 text-center",
-    style: {
-      color: C.textDim
-    }
-  }, "Resistencia"), /*#__PURE__*/React.createElement(RadioRow, {
-    options: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-    value: endurance,
-    onChange: setEndurance
-  })), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setStep("hardest"),
-    className: "w-full rounded-2xl py-3 text-sm font-semibold",
-    style: {
-      background: C.green,
-      color: C.greenText
-    }
-  }, "Continuar")), step === "hardest" && /*#__PURE__*/React.createElement("div", {
-    className: "w-full max-w-sm space-y-5 animate-in"
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "text-lg font-semibold text-center",
-    style: {
-      color: C.text
-    }
-  }, "¿Qué fue lo que más te costó?"), /*#__PURE__*/React.createElement(ChipPicker, {
-    options: MUSCLE_GROUPS,
-    selected: hardest,
-    onPick: setHardest,
-    multi: false
-  }), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setStep("easiest"),
-    className: "w-full rounded-2xl py-3 text-sm font-semibold",
-    style: {
-      background: C.green,
-      color: C.greenText
-    }
-  }, "Continuar")), step === "easiest" && /*#__PURE__*/React.createElement("div", {
-    className: "w-full max-w-sm space-y-5 animate-in"
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "text-lg font-semibold text-center",
-    style: {
-      color: C.text
-    }
-  }, "¿Y lo que menos te costó?"), /*#__PURE__*/React.createElement(ChipPicker, {
-    options: MUSCLE_GROUPS,
-    selected: easiest,
-    onPick: setEasiest,
-    multi: false
-  }), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setStep("pain"),
-    className: "w-full rounded-2xl py-3 text-sm font-semibold",
-    style: {
-      background: C.green,
-      color: C.greenText
-    }
-  }, "Continuar")), step === "pain" && /*#__PURE__*/React.createElement("div", {
-    className: "w-full max-w-sm space-y-5 animate-in"
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "text-lg font-semibold text-center",
-    style: {
-      color: C.text
-    }
-  }, "¿Te duele algo?"), /*#__PURE__*/React.createElement("p", {
-    className: "text-xs text-center",
-    style: {
-      color: C.textDim
-    }
-  }, "Tocá todo lo que corresponda, o nada si no te duele nada"), /*#__PURE__*/React.createElement(ChipPicker, {
-    options: PAIN_AREAS,
-    selected: pain,
-    onPick: togglePain,
-    multi: true
-  }), /*#__PURE__*/React.createElement("button", {
-    onClick: finish,
-    className: "w-full rounded-2xl py-3 text-sm font-semibold",
-    style: {
-      background: C.green,
-      color: C.greenText
-    }
-  }, "Finalizar")));
+    className: "flex flex-col items-center justify-center px-8",
+    style: { minHeight: "100vh" }
+  },
+  step === "toast" && /*#__PURE__*/React.createElement("div", {
+    className: "flex flex-col items-center gap-4 animate-in"
+  },
+    /*#__PURE__*/React.createElement("div", {
+      className: "w-20 h-20 rounded-full flex items-center justify-center",
+      style: { background: "rgba(44,111,255,0.15)" }
+    }, /*#__PURE__*/React.createElement(Icon, { name: "check", size: 36, color: C.green })),
+    /*#__PURE__*/React.createElement("p", {
+      className: "text-2xl font-bold text-center",
+      style: { color: C.text }
+    }, "¡Sesión guardada!")
+  ),
+  step === "pain" && /*#__PURE__*/React.createElement("div", {
+    className: "w-full max-w-sm space-y-6 animate-in"
+  },
+    /*#__PURE__*/React.createElement("p", {
+      className: "text-2xl font-bold text-center",
+      style: { color: C.text }
+    }, "¿Te duele algo?"),
+    /*#__PURE__*/React.createElement("p", {
+      className: "text-base text-center",
+      style: { color: C.textDim }
+    }, "Tocá todo lo que corresponda"),
+    /*#__PURE__*/React.createElement(ChipPicker, {
+      options: PAIN_AREAS, selected: pain, onPick: togglePain, multi: true
+    }),
+    /*#__PURE__*/React.createElement("button", {
+      onClick: finish,
+      className: "w-full rounded-2xl font-bold",
+      style: { background: C.green, color: C.greenText, padding: "18px", fontSize: 18 }
+    }, "Finalizar")
+  ));
 }
 function SessionEditScreen({
   log,
@@ -3145,7 +3102,7 @@ function SessionEditScreen({
   })), /*#__PURE__*/React.createElement("button", {
     onClick: handleSave,
     disabled: saving,
-    className: "w-full rounded-2xl py-3.5 text-base font-semibold",
+    className: "w-full rounded-2xl py-5 text-xl font-bold",
     style: {
       background: C.green,
       color: C.greenText,
