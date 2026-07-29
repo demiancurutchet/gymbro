@@ -761,7 +761,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.2.1";
+const APP_VERSION = "2.2.2";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -2659,14 +2659,26 @@ function SessionScreen({
     setExercises(arr);
     saveDraft(arr, completed, startedAt);
   }
+  const [rirSheet, setRirSheet] = useState(null);
+
   function markDone(idx) {
-    setCompleted(prev => {
-      const next = new Set(prev);
-      next.add(idx);
-      saveDraft(exercises, next, startedAt);
-      return next;
-    });
     setFocusedIndex(null);
+    setRirSheet({ idx, exName: exercises[idx]?.name || "" });
+  }
+
+  function confirmRir(rir) {
+    if (!rirSheet) return;
+    const idx = rirSheet.idx;
+    setRirSheet(null);
+    // Update exercises with RIR value
+    const arr = exercises.slice();
+    arr[idx] = { ...arr[idx], rir: rir !== null ? rir : undefined };
+    setExercises(arr);
+    // Mark as completed
+    const next = new Set(completed);
+    next.add(idx);
+    setCompleted(next);
+    saveDraft(arr, next, startedAt);
   }
   async function handleSave() {
     setSaving(true);
