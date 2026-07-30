@@ -761,7 +761,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.4.0";
+const APP_VERSION = "2.4.1";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -5100,11 +5100,11 @@ function MainApp({
   }
   async function saveMilestone(milestone) {
     try {
-      await db.collection("settings").doc(uid).set({
-        ownerUid: uid,
-        milestones: firebase.firestore.FieldValue.arrayUnion(milestone)
-      }, { merge: true });
-    } catch(e) {}
+      const doc = await db.collection("settings").doc(uid).get();
+      const existing = doc.exists ? (doc.data().milestones || []) : [];
+      const next = [milestone, ...existing];
+      await db.collection("settings").doc(uid).set({ ownerUid: uid, milestones: next }, { merge: true });
+    } catch(e) { console.error("saveMilestone error:", e); }
   }
   async function loadMilestones() {
     try {
