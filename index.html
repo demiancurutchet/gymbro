@@ -761,7 +761,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.3.3";
+const APP_VERSION = "2.4.0";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -3217,7 +3217,9 @@ function InsightsScreen({
   onDismissInsight,
   onRefineInsight,
   insightsContext,
-  onUpdateContext
+  onUpdateContext,
+  onSaveMilestone,
+  onLoadMilestones
 }) {
   const { sessions, list: rawList } = buildInsights(logs, nutrition, proteinGoal);
   const [refineTarget, setRefineTarget] = useState(null);
@@ -3227,6 +3229,13 @@ function InsightsScreen({
   const [aiAnalysis, setAiAnalysis] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
+  const [milestones, setMilestones] = useState([]);
+  const [loadingMilestones, setLoadingMilestones] = useState(true);
+
+  useEffect(() => {
+    if (!onLoadMilestones) return;
+    onLoadMilestones().then(m => { setMilestones(m || []); setLoadingMilestones(false); });
+  }, []);
   const list = rawList.filter(ins => !(dismissedInsights || []).includes(ins.id));
 
   function buildDataSummary() {
@@ -3267,6 +3276,12 @@ function InsightsScreen({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error desconocido");
       setAiAnalysis(data.analysis);
+      // Auto-save as milestone
+      if (onSaveMilestone) {
+        const milestone = { text: data.analysis, date: todayISO(), savedAt: new Date().toISOString() };
+        onSaveMilestone(milestone);
+        setMilestones(prev => [milestone, ...prev]);
+      }
     } catch(e) {
       setAiError(e.message);
     } finally {
@@ -3426,6 +3441,33 @@ function InsightsScreen({
     className: "text-xs font-medium",
     style: { color: C.blue }
   }, "Refinar")))))))))),
+  milestones.length > 0 && /*#__PURE__*/React.createElement("div", { className: "mt-6" },
+    /*#__PURE__*/React.createElement("p", {
+      className: "text-xs font-bold uppercase mb-3",
+      style: { color: C.textDim }
+    }, "Hitos guardados"),
+    /*#__PURE__*/React.createElement("div", { className: "space-y-3" },
+      milestones.map((m, i) =>
+        /*#__PURE__*/React.createElement("div", {
+          key: i,
+          className: "rounded-2xl p-4",
+          style: { background: C.surface, border: `1px solid ${C.border}` }
+        },
+          /*#__PURE__*/React.createElement("p", {
+            className: "text-xs mb-2",
+            style: { color: C.textDim, fontVariantNumeric: "tabular-nums" }
+          }, fmtFull(m.date)),
+          m.text.split("\n").filter(l => l.trim()).map((line, j) =>
+            /*#__PURE__*/React.createElement("p", {
+              key: j,
+              className: "text-sm leading-relaxed",
+              style: { color: C.text }
+            }, line)
+          )
+        )
+      )
+    )
+  ),
   refineTarget && /*#__PURE__*/React.createElement("div", {
     style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: "24px" }
   }, /*#__PURE__*/React.createElement("div", {
@@ -3637,7 +3679,9 @@ function ProgressFlow({
   onDismissInsight,
   onRefineInsight,
   insightsContext,
-  onUpdateContext
+  onUpdateContext,
+  onSaveMilestone,
+  onLoadMilestones
 }) {
   const [view, setView] = useState("dashboard"); // dashboard | insights | detail | protein-calendar
   const [period, setPeriod] = useState("month");
@@ -3663,7 +3707,9 @@ function ProgressFlow({
       onDismissInsight: onDismissInsight,
       onRefineInsight: onRefineInsight,
       insightsContext: insightsContext,
-      onUpdateContext: onUpdateContext
+      onUpdateContext: onUpdateContext,
+      onSaveMilestone: onSaveMilestone,
+      onLoadMilestones: onLoadMilestones
     });
   }
   if (view === "dashboard") {
@@ -3752,7 +3798,7 @@ function ProgressFlow({
       points: inPeriod
     }))), /*#__PURE__*/React.createElement("button", {
       onClick: () => setView("insights"),
-      className: "w-full flex items-center justify-between rounded-2xl px-4 py-3.5 mb-2.5",
+      className: "w-full flex items-center justify-between rounded-2xl px-4 py-3.5",
       style: {
         background: "rgba(44,111,255,0.1)",
         border: `1px solid ${C.border}`
@@ -3774,7 +3820,7 @@ function ProgressFlow({
       color: C.textDim2
     })), /*#__PURE__*/React.createElement("button", {
       onClick: () => setView("protein-calendar"),
-      className: "w-full flex items-center justify-between rounded-2xl px-4 py-3.5 mt-3",
+      className: "w-full flex items-center justify-between rounded-2xl px-4 py-3.5",
       style: { background: C.surface, border: `1px solid ${C.border}` }
     }, /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-3" },
       /*#__PURE__*/React.createElement(Icon, { name: "calendar", size: 18, color: C.textDim }),
@@ -5052,6 +5098,21 @@ function MainApp({
       await db.collection("settings").doc(uid).set({ ownerUid: uid, insightsContext: text }, { merge: true });
     } catch(e) {}
   }
+  async function saveMilestone(milestone) {
+    try {
+      await db.collection("settings").doc(uid).set({
+        ownerUid: uid,
+        milestones: firebase.firestore.FieldValue.arrayUnion(milestone)
+      }, { merge: true });
+    } catch(e) {}
+  }
+  async function loadMilestones() {
+    try {
+      const doc = await db.collection("settings").doc(uid).get();
+      const ms = doc.exists ? (doc.data().milestones || []) : [];
+      return ms.slice().sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
+    } catch(e) { return []; }
+  }
   async function dismissInsight(id) {
     const next = [...dismissedInsights, id];
     setDismissedInsights(next);
@@ -5207,7 +5268,9 @@ function MainApp({
     onDismissInsight: dismissInsight,
     onRefineInsight: refineInsight,
     insightsContext: insightsContext,
-    onUpdateContext: updateInsightsContext
+    onUpdateContext: updateInsightsContext,
+    onSaveMilestone: saveMilestone,
+    onLoadMilestones: loadMilestones
   }), tab === "proteina" && /*#__PURE__*/React.createElement(NutritionScreen, {
     entries: nutrition,
     hiddenFoods: hiddenFoods,
