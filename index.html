@@ -761,7 +761,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.5.1";
+const APP_VERSION = "2.5.4";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -3207,8 +3207,8 @@ function SessionEditScreen({
 // ---------------------------------------------------------------------------
 // Progress
 // ---------------------------------------------------------------------------
-function GymAIChat({ dataSummary, insightsContext, onClose }) {
-  const [messages, setMessages] = useState([]);
+function GymAIChat({ dataSummary, insightsContext, onClose, initialMessages }) {
+  const [messages, setMessages] = useState(initialMessages || []);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -3320,9 +3320,25 @@ function GymAIChat({ dataSummary, insightsContext, onClose }) {
               lineHeight: 1.55
             }
           },
-            m.content.split("\n").filter(l => l.trim()).map((line, j) =>
-              /*#__PURE__*/React.createElement("p", { key: j, style: { marginBottom: j < m.content.split("\n").filter(l=>l.trim()).length - 1 ? 8 : 0 } }, line)
-            )
+            (() => {
+              const lines = m.content.split("\n").filter(l => l.trim());
+              return lines.map((line, j) => {
+                const isHeading = /^[🟢🔴💡⚠️✅❌🏋️💪🥗📊🎯👇]/.test(line);
+                const isBold = line.startsWith("**") && line.endsWith("**");
+                const text = isBold ? line.slice(2, -2) : line;
+                return /*#__PURE__*/React.createElement("p", {
+                  key: j,
+                  style: {
+                    marginBottom: j < lines.length - 1 ? (isHeading ? 6 : 6) : 0,
+                    fontSize: isHeading ? "1.05rem" : "1rem",
+                    fontWeight: isHeading || isBold ? "700" : "400",
+                    lineHeight: 1.55,
+                    color: isHeading ? "#fff" : m.role === "user" ? "#fff" : C.text,
+                    marginTop: isHeading && j > 0 ? 10 : 0
+                  }
+                }, text);
+              });
+            })()
           )
         )
       ),
@@ -3366,7 +3382,7 @@ function GymAIChat({ dataSummary, insightsContext, onClose }) {
           flex: 1, background: "rgba(255,255,255,0.07)",
           border: "1px solid rgba(255,255,255,0.12)",
           borderRadius: 22, padding: "12px 16px",
-          color: C.text, fontSize: 15, outline: "none",
+          color: C.text, fontSize: "1rem", outline: "none",
           fontFamily: "inherit"
         }
       }),
@@ -3411,7 +3427,7 @@ function InsightsScreen({
   const [refineNote, setRefineNote] = useState("");
   const [editingContext, setEditingContext] = useState(false);
   const [contextDraft, setContextDraft] = useState(insightsContext || "");
-  const [chatOpen, setChatOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(null); // null=closed, "new"=new, number=resume index
   const [milestones, setMilestones] = useState([]);
   const [loadingMilestones, setLoadingMilestones] = useState(true);
 
@@ -3496,17 +3512,17 @@ function InsightsScreen({
     }
   }, "Patrones en tus propios datos (", sessions.length, " sesiones puntuadas)."),
   /*#__PURE__*/React.createElement("button", {
-    onClick: () => setChatOpen(true),
+    onClick: () => setChatOpen("new"),
     className: "w-full flex items-center justify-between rounded-2xl px-4 py-4 mb-4",
     style: { background: "rgba(44,111,255,0.1)", border: "1px solid rgba(44,111,255,0.3)" }
   },
     /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-3" },
       /*#__PURE__*/React.createElement("div", {
-        className: "w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold",
-        style: { background: C.green, color: "#fff" }
-      }, "G"),
+        className: "w-8 h-8 rounded-full flex items-center justify-center text-base",
+        style: { background: C.green }
+      }, "🤖"),
       /*#__PURE__*/React.createElement("div", { className: "text-left" },
-        /*#__PURE__*/React.createElement("p", { className: "font-bold text-sm", style: { color: C.text } }, "Primo"),
+        /*#__PURE__*/React.createElement("p", { className: "font-bold text-sm", style: { color: C.text } }, "Hablá con Primo"),
         /*#__PURE__*/React.createElement("p", { className: "text-xs", style: { color: C.textDim } },
           milestones.length > 0 ? "Última charla con Primo: " + fmtFull(milestones[0]?.date) : "Hablá con Primo sobre tus datos"
         )
@@ -3514,10 +3530,11 @@ function InsightsScreen({
     ),
     /*#__PURE__*/React.createElement(Icon, { name: "chevronRight", size: 18, color: C.textDim2 })
   ),
-  chatOpen && /*#__PURE__*/React.createElement(GymAIChat, {
+  chatOpen !== null && /*#__PURE__*/React.createElement(GymAIChat, {
     dataSummary: buildDataSummary(),
     insightsContext: insightsContext,
-    onClose: (conv) => { setChatOpen(false); handleChatClose(conv); }
+    initialMessages: typeof chatOpen === "number" ? (milestones[chatOpen]?.messages || []) : [],
+    onClose: (conv) => { setChatOpen(null); handleChatClose(conv); }
   }),
   editingContext ? /*#__PURE__*/React.createElement("div", {
     className: "rounded-2xl p-4 mb-4",
@@ -3616,9 +3633,10 @@ function InsightsScreen({
     }, "Conversaciones guardadas"),
     /*#__PURE__*/React.createElement("div", { className: "space-y-3" },
       milestones.map((m, i) =>
-        /*#__PURE__*/React.createElement("div", {
+        /*#__PURE__*/React.createElement("button", {
           key: i,
-          className: "rounded-2xl p-4",
+          onClick: () => setChatOpen(i),
+          className: "w-full rounded-2xl p-4 text-left",
           style: { background: C.surface, border: `1px solid ${C.border}` }
         },
           /*#__PURE__*/React.createElement("div", { className: "flex items-center justify-between mb-2" },
@@ -3626,10 +3644,13 @@ function InsightsScreen({
               className: "text-xs",
               style: { color: C.textDim, fontVariantNumeric: "tabular-nums" }
             }, fmtFull(m.date)),
-            m.messages && /*#__PURE__*/React.createElement("p", {
-              className: "text-xs",
-              style: { color: C.textDim2 }
-            }, m.messages.length, " mensajes")
+            /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-2" },
+              m.messages && /*#__PURE__*/React.createElement("p", {
+                className: "text-xs",
+                style: { color: C.textDim2 }
+              }, m.messages.length, " msgs"),
+              /*#__PURE__*/React.createElement(Icon, { name: "chevronRight", size: 14, color: C.textDim2 })
+            )
           ),
           /*#__PURE__*/React.createElement("p", {
             className: "text-sm",
