@@ -761,7 +761,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.6.3";
+const APP_VERSION = "2.6.4";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1946,7 +1946,7 @@ function HomeScreen({
   }, trainedToday && onSimulate
     ? /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
         /*#__PURE__*/React.createElement("button", {
-          onClick: () => onEditTodaySession(todaySession.id),
+          onClick: () => todaySession && onEditTodaySession(todaySession.id),
           className: "w-full flex items-center justify-center gap-2 rounded-full py-4 text-base font-bold",
           style: { background: C.surface2, color: C.text }
         }, /*#__PURE__*/React.createElement(Icon, { name: "pencil", size: 20, color: C.text }), "Editar sesión de hoy"),
