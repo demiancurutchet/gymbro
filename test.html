@@ -42,7 +42,7 @@
 <body>
 <div id="root"></div>
 
-<script>(function(){const o=firebase.firestore.bind(firebase);firebase.firestore=function(){const db=o();const oc=db.collection.bind(db);db.collection=function(n){const c=oc(n);const nw=()=>Promise.resolve({id:'test-'+Date.now()});c.add=()=>{console.warn('[TEST] blocked:',n);return nw();};const od=c.doc.bind(c);c.doc=function(id){const d=od(id);d.set=()=>{console.warn('[TEST] blocked:',n,id);return Promise.resolve();};d.update=()=>Promise.resolve();d.delete=()=>{console.warn('[TEST] blocked delete:',n,id);return Promise.resolve();};return d;};return c;};return db;};})();</script><script>
+<script>window.GYMBRO_TEST=true;</script><script>(function(){const o=firebase.firestore.bind(firebase);firebase.firestore=function(){const db=o();const oc=db.collection.bind(db);db.collection=function(n){const c=oc(n);const nw=()=>Promise.resolve({id:'test-'+Date.now()});c.add=()=>{console.warn('[TEST] blocked:',n);return nw();};const od=c.doc.bind(c);c.doc=function(id){const d=od(id);d.set=()=>{console.warn('[TEST] blocked:',n,id);return Promise.resolve();};d.update=()=>Promise.resolve();d.delete=()=>{console.warn('[TEST] blocked:',n,id);return Promise.resolve();};return d;};return c;};return db;};})();</script><script>
 const {
   useState,
   useEffect,
@@ -761,7 +761,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.6.1";
+const APP_VERSION = "2.6.2";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1704,7 +1704,8 @@ function HomeScreen({
   goals,
   nutrition,
   onStartSession,
-  onEditTodaySession
+  onEditTodaySession,
+  onSimulate
 }) {
   const [picking, setPicking] = useState(false);
   const trainedToday = !!todaySession;
@@ -1942,19 +1943,28 @@ function HomeScreen({
       maxWidth: 528,
       margin: "0 auto"
     }
-  }, /*#__PURE__*/React.createElement("button", {
-    onClick: sessionInProgress ? () => onStartSession(sessionInProgress.routineId) : trainedToday ? () => onEditTodaySession(todaySession.id) : () => setPicking(true),
-    className: "w-full flex items-center justify-center gap-2 rounded-full py-4 text-base font-bold",
-    style: {
-      background: C.green,
-      color: "#fff",
-      boxShadow: "-14px 61px 18px 0 rgba(44,111,255,0.00), -9px 39px 16px 0 rgba(44,111,255,0.01), -5px 22px 14px 0 rgba(44,111,255,0.05), -2px 10px 10px 0 rgba(44,111,255,0.09), -1px 2px 6px 0 rgba(44,111,255,0.10)"
-    }
-  }, /*#__PURE__*/React.createElement(Icon, {
-    name: sessionInProgress ? "dumbbell" : trainedToday ? "pencil" : "dumbbell",
-    size: 20,
-    color: "#fff"
-  }), sessionInProgress ? ("Continuar sesión · " + sessionInProgress.routineName) : trainedToday ? "Editar sesión de hoy" : "Iniciar sesión de hoy")));
+  }, trainedToday && onSimulate
+    ? /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
+        /*#__PURE__*/React.createElement("button", {
+          onClick: () => onEditTodaySession(todaySession.id),
+          className: "w-full flex items-center justify-center gap-2 rounded-full py-4 text-base font-bold",
+          style: { background: C.surface2, color: C.text }
+        }, /*#__PURE__*/React.createElement(Icon, { name: "pencil", size: 20, color: C.text }), "Editar sesión de hoy"),
+        /*#__PURE__*/React.createElement("button", {
+          onClick: onSimulate,
+          className: "w-full flex items-center justify-center gap-2 rounded-full py-4 text-base font-bold",
+          style: { background: C.green, color: "#fff", boxShadow: "-14px 61px 18px 0 rgba(44,111,255,0.00), -9px 39px 16px 0 rgba(44,111,255,0.01), -5px 22px 14px 0 rgba(44,111,255,0.05), -2px 10px 10px 0 rgba(44,111,255,0.09), -1px 2px 6px 0 rgba(44,111,255,0.10)" }
+        }, /*#__PURE__*/React.createElement(Icon, { name: "dumbbell", size: 20, color: "#fff" }), "🧪 Simular sesión")
+      )
+    : /*#__PURE__*/React.createElement("button", {
+        onClick: sessionInProgress ? () => onStartSession(sessionInProgress.routineId) : trainedToday ? () => onEditTodaySession(todaySession.id) : () => setPicking(true),
+        className: "w-full flex items-center justify-center gap-2 rounded-full py-4 text-base font-bold",
+        style: { background: C.green, color: "#fff", boxShadow: "-14px 61px 18px 0 rgba(44,111,255,0.00), -9px 39px 16px 0 rgba(44,111,255,0.01), -5px 22px 14px 0 rgba(44,111,255,0.05), -2px 10px 10px 0 rgba(44,111,255,0.09), -1px 2px 6px 0 rgba(44,111,255,0.10)" }
+      }, /*#__PURE__*/React.createElement(Icon, {
+        name: sessionInProgress ? "dumbbell" : trainedToday ? "pencil" : "dumbbell",
+        size: 20, color: "#fff"
+      }), sessionInProgress ? ("Continuar sesión · " + sessionInProgress.routineName) : trainedToday ? "Editar sesión de hoy" : "Iniciar sesión de hoy")
+  ));
 }
 function RIRPreview({ onClose }) {
   const opts = [
@@ -5021,6 +5031,7 @@ function MainApp({
   }, [nutrition, logs]);
   const [tab, setTab] = useState("inicio");
   const [rutinasView, setRutinasView] = useState(null);
+  const [simulateActive, setSimulateActive] = useState(false);
   useEffect(() => {
     loadAll();
   }, []);
@@ -5465,8 +5476,36 @@ function MainApp({
         type: "editSession",
         sessionId
       });
-    }
-  }), tab === "rutinas" && !rutinasView && /*#__PURE__*/React.createElement(RoutinesList, {
+    },
+    onSimulate: window.GYMBRO_TEST ? () => setSimulateActive(true) : undefined
+  }), simulateActive && /*#__PURE__*/React.createElement("div", {
+    style: { position: "fixed", inset: 0, zIndex: 200, background: "#03060d" }
+  }, /*#__PURE__*/React.createElement(SessionScreen, {
+    routine: {
+      id: "sim-routine", name: "Rutina de prueba",
+      exercises: [
+        { id: "s1", name: "Press banca", bodyweight: false, sets: [
+          { id: "ss1", type: "normal", reps: 10, weight: 60, drops: [] },
+          { id: "ss2", type: "normal", reps: 10, weight: 60, drops: [] },
+          { id: "ss3", type: "normal", reps: 8, weight: 65, drops: [] },
+        ]},
+        { id: "s2", name: "Remo con barra", bodyweight: false, sets: [
+          { id: "ss4", type: "normal", reps: 10, weight: 50, drops: [] },
+          { id: "ss5", type: "normal", reps: 10, weight: 50, drops: [] },
+        ]},
+        { id: "s3", name: "Dominadas", bodyweight: true, sets: [
+          { id: "ss6", type: "normal", reps: 8, weight: 0, drops: [] },
+          { id: "ss7", type: "normal", reps: 6, weight: 0, drops: [] },
+        ]},
+      ]
+    },
+    onCancel: () => setSimulateActive(false),
+    onSave: async () => { setSimulateActive(false); return { id: "sim-saved" }; },
+    onFinalize: () => {},
+    onDone: () => setSimulateActive(false),
+    lastSession: null
+  })),
+  tab === "rutinas" && !rutinasView && /*#__PURE__*/React.createElement(RoutinesList, {
     routines: routines,
     logs: logs,
     onOpen: id => setRutinasView({
