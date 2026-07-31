@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
-<title>Gymbro TEST</title>
+<title>Gymbro TEST 🧪</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23070C16'/%3E%3Crect x='3' y='8' width='5' height='8' rx='1.5' fill='%232C6FFF'/%3E%3Crect x='16' y='8' width='5' height='8' rx='1.5' fill='%232C6FFF'/%3E%3Crect x='8' y='10.5' width='8' height='3' rx='1' fill='%232C6FFF'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -38,10 +38,53 @@
   @keyframes pulseSoft { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   .animate-pulse-soft { animation: pulseSoft 1.6s ease-in-out infinite; }
 </style>
+<style>
+  body::before {
+    content: "🧪 MODO TEST — nada se guarda";
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255,69,58,0.85);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 20px;
+    z-index: 9999;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+</style>
 </head>
 <body>
 <div id="root"></div>
 
+// ─── MODO TEST: todas las escrituras a Firestore están bloqueadas ───────────
+(function() {
+  const origFirestore = firebase.firestore.bind(firebase);
+  firebase.firestore = function() {
+    const db = origFirestore();
+    const origCollection = db.collection.bind(db);
+    db.collection = function(name) {
+      const col = origCollection(name);
+      const origDoc = col.doc.bind(col);
+      const noWrite = () => Promise.resolve({ id: "test-mock-" + Date.now() });
+      col.add = () => { console.warn("[TEST] Firestore write bloqueada:", name); return noWrite(); };
+      col.doc = function(id) {
+        const doc = origDoc(id);
+        doc.set = () => { console.warn("[TEST] Firestore write bloqueada:", name, id); return Promise.resolve(); };
+        doc.update = () => { console.warn("[TEST] Firestore write bloqueada:", name, id); return Promise.resolve(); };
+        doc.delete = () => { console.warn("[TEST] Firestore write bloqueada:", name, id); return Promise.resolve(); };
+        return doc;
+      };
+      return col;
+    };
+    return db;
+  };
+  firebase.firestore.FieldValue = origFirestore().constructor.FieldValue || firebase.firestore.FieldValue;
+})();
+// ─────────────────────────────────────────────────────────────────────────────
 <script>
 const {
   useState,
@@ -761,7 +804,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.6.0-test";
+const APP_VERSION = "2.6.0";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -2288,17 +2331,25 @@ function RoutinesList({
     style: {
       color: C.textDim2
     }
-  }, "Borrar todos los datos"), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setShowRirPreview(true),
-    className: "text-xs mt-1",
-    style: { color: "rgba(255,255,255,0.2)" }
-  }, "preview RIR"), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setSimulateSession(true),
-    className: "text-xs mt-1",
-    style: { color: "rgba(255,255,255,0.2)" }
-  }, "simular sesión"))),
+  }, "Borrar todos los datos")),
+  /*#__PURE__*/React.createElement("div", {
+    className: "mt-4 flex flex-col items-center gap-2"
+  },
+    /*#__PURE__*/React.createElement("button", {
+      onClick: () => setShowRirPreview(true),
+      className: "text-xs px-3 py-1.5 rounded-full",
+      style: { color: "rgba(255,255,255,0.3)", border: "1px solid rgba(255,255,255,0.1)" }
+    }, "🎯 Ver drawer RIR"),
+    /*#__PURE__*/React.createElement("button", {
+      onClick: () => setSimulateSession(true),
+      className: "text-xs px-3 py-1.5 rounded-full",
+      style: { color: "rgba(255,255,255,0.3)", border: "1px solid rgba(255,255,255,0.1)" }
+    }, "🏋️ Simular sesión")
+  )),
   showRirPreview && /*#__PURE__*/React.createElement(RIRPreview, { onClose: () => setShowRirPreview(false) }),
-  simulateSession && /*#__PURE__*/React.createElement(SessionScreen, {
+  simulateSession && /*#__PURE__*/React.createElement("div", {
+    style: { position: "fixed", inset: 0, zIndex: 200, background: "#03060d" }
+  }, /*#__PURE__*/React.createElement(SessionScreen, {
     routine: {
       id: "sim-routine",
       name: "Rutina de prueba",
@@ -2319,11 +2370,11 @@ function RoutinesList({
       ]
     },
     onCancel: () => setSimulateSession(false),
-    onSave: async () => { alert("✅ Sesión guardada (simulación — no se guardó nada en Firebase)"); setSimulateSession(false); return null; },
+    onSave: async () => { setSimulateSession(false); return { id: "sim-saved" }; },
     onFinalize: () => {},
     onDone: () => setSimulateSession(false),
     lastSession: null
-  }));
+  })));
 }
 
 // ---------------------------------------------------------------------------
