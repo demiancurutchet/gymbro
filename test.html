@@ -2011,6 +2011,7 @@ function RoutinesList({
   const [confirmId, setConfirmId] = useState(null);
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [showRirPreview, setShowRirPreview] = useState(false);
+  const [simulateSession, setSimulateSession] = useState(false);
   const [order, setOrder] = useState(routines);
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOffset, setDragOffset] = useState(0);
@@ -2291,7 +2292,38 @@ function RoutinesList({
     onClick: () => setShowRirPreview(true),
     className: "text-xs mt-1",
     style: { color: "rgba(255,255,255,0.2)" }
-  }, "preview RIR"))), showRirPreview && /*#__PURE__*/React.createElement(RIRPreview, { onClose: () => setShowRirPreview(false) }));
+  }, "preview RIR"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setSimulateSession(true),
+    className: "text-xs mt-1",
+    style: { color: "rgba(255,255,255,0.2)" }
+  }, "simular sesión"))),
+  showRirPreview && /*#__PURE__*/React.createElement(RIRPreview, { onClose: () => setShowRirPreview(false) }),
+  simulateSession && /*#__PURE__*/React.createElement(SessionScreen, {
+    routine: {
+      id: "sim-routine",
+      name: "Rutina de prueba",
+      exercises: [
+        { id: "s1", name: "Press banca", bodyweight: false, sets: [
+          { id: "ss1", type: "normal", reps: 10, weight: 60, drops: [] },
+          { id: "ss2", type: "normal", reps: 10, weight: 60, drops: [] },
+          { id: "ss3", type: "normal", reps: 8, weight: 65, drops: [] },
+        ]},
+        { id: "s2", name: "Remo con barra", bodyweight: false, sets: [
+          { id: "ss4", type: "normal", reps: 10, weight: 50, drops: [] },
+          { id: "ss5", type: "normal", reps: 10, weight: 50, drops: [] },
+        ]},
+        { id: "s3", name: "Dominadas", bodyweight: true, sets: [
+          { id: "ss6", type: "normal", reps: 8, weight: 0, drops: [] },
+          { id: "ss7", type: "normal", reps: 6, weight: 0, drops: [] },
+        ]},
+      ]
+    },
+    onCancel: () => setSimulateSession(false),
+    onSave: async () => { alert("✅ Sesión guardada (simulación — no se guardó nada en Firebase)"); setSimulateSession(false); return null; },
+    onFinalize: () => {},
+    onDone: () => setSimulateSession(false),
+    lastSession: null
+  }));
 }
 
 // ---------------------------------------------------------------------------
