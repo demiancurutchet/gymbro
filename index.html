@@ -761,7 +761,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.5.4";
+const APP_VERSION = "2.6.0";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -2011,6 +2011,7 @@ function RoutinesList({
   const [confirmId, setConfirmId] = useState(null);
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [showRirPreview, setShowRirPreview] = useState(false);
+  const [simulateSession, setSimulateSession] = useState(false);
   const [order, setOrder] = useState(routines);
   const [dragIndex, setDragIndex] = useState(null);
   const [dragOffset, setDragOffset] = useState(0);
@@ -2287,11 +2288,50 @@ function RoutinesList({
     style: {
       color: C.textDim2
     }
-  }, "Borrar todos los datos"), /*#__PURE__*/React.createElement("button", {
-    onClick: () => setShowRirPreview(true),
-    className: "text-xs mt-1",
-    style: { color: "rgba(255,255,255,0.2)" }
-  }, "preview RIR"))), showRirPreview && /*#__PURE__*/React.createElement(RIRPreview, { onClose: () => setShowRirPreview(false) }));
+  }, "Borrar todos los datos")),
+  /*#__PURE__*/React.createElement("div", {
+    className: "mt-4 flex flex-col items-center gap-2"
+  },
+    /*#__PURE__*/React.createElement("button", {
+      onClick: () => setShowRirPreview(true),
+      className: "text-xs px-3 py-1.5 rounded-full",
+      style: { color: "rgba(255,255,255,0.3)", border: "1px solid rgba(255,255,255,0.1)" }
+    }, "🎯 Ver drawer RIR"),
+    /*#__PURE__*/React.createElement("button", {
+      onClick: () => setSimulateSession(true),
+      className: "text-xs px-3 py-1.5 rounded-full",
+      style: { color: "rgba(255,255,255,0.3)", border: "1px solid rgba(255,255,255,0.1)" }
+    }, "🏋️ Simular sesión")
+  )),
+  showRirPreview && /*#__PURE__*/React.createElement(RIRPreview, { onClose: () => setShowRirPreview(false) }),
+  simulateSession && /*#__PURE__*/React.createElement("div", {
+    style: { position: "fixed", inset: 0, zIndex: 200, background: "#03060d" }
+  }, /*#__PURE__*/React.createElement(SessionScreen, {
+    routine: {
+      id: "sim-routine",
+      name: "Rutina de prueba",
+      exercises: [
+        { id: "s1", name: "Press banca", bodyweight: false, sets: [
+          { id: "ss1", type: "normal", reps: 10, weight: 60, drops: [] },
+          { id: "ss2", type: "normal", reps: 10, weight: 60, drops: [] },
+          { id: "ss3", type: "normal", reps: 8, weight: 65, drops: [] },
+        ]},
+        { id: "s2", name: "Remo con barra", bodyweight: false, sets: [
+          { id: "ss4", type: "normal", reps: 10, weight: 50, drops: [] },
+          { id: "ss5", type: "normal", reps: 10, weight: 50, drops: [] },
+        ]},
+        { id: "s3", name: "Dominadas", bodyweight: true, sets: [
+          { id: "ss6", type: "normal", reps: 8, weight: 0, drops: [] },
+          { id: "ss7", type: "normal", reps: 6, weight: 0, drops: [] },
+        ]},
+      ]
+    },
+    onCancel: () => setSimulateSession(false),
+    onSave: async () => { setSimulateSession(false); return { id: "sim-saved" }; },
+    onFinalize: () => {},
+    onDone: () => setSimulateSession(false),
+    lastSession: null
+  })));
 }
 
 // ---------------------------------------------------------------------------
@@ -2616,48 +2656,28 @@ function RoutineDetail({
 // ---------------------------------------------------------------------------
 // Session logging
 // ---------------------------------------------------------------------------
-function RestTimer({ seconds, nextExName, isLast, onNext, onConfirmShortRest }) {
+function RestTimer({ onNext, nextLabel }) {
   const [elapsed, setElapsed] = useState(0);
-  const [shortRestPrompt, setShortRestPrompt] = useState(false);
   useEffect(() => {
     const t = setInterval(() => setElapsed(e => e + 1), 1000);
     return () => clearInterval(t);
   }, []);
   const mins = Math.floor(elapsed / 60);
   const secs = String(elapsed % 60).padStart(2, "0");
-  function handleNext() {
-    if (elapsed < 10 && !shortRestPrompt) { setShortRestPrompt(true); return; }
-    onNext(elapsed);
-  }
   return /*#__PURE__*/React.createElement("div", {
     className: "flex flex-col items-center justify-center px-6",
     style: { minHeight: "100vh" }
   },
-    shortRestPrompt
-      ? /*#__PURE__*/React.createElement("div", { className: "w-full max-w-sm space-y-5 text-center" },
-          /*#__PURE__*/React.createElement("p", { style: { color: C.text, fontSize: 22, fontWeight: "700" } }, "¿Solo " + elapsed + " segundos?"),
-          /*#__PURE__*/React.createElement("p", { style: { color: C.textDim, fontSize: 16 } }, "El contador sigue corriendo"),
-          /*#__PURE__*/React.createElement("p", { style: { color: C.textDim, fontVariantNumeric: "tabular-nums", fontSize: 14 } }, mins + ":" + secs),
-          /*#__PURE__*/React.createElement("button", {
-            onClick: () => onNext(elapsed),
-            className: "w-full rounded-2xl font-bold",
-            style: { background: C.green, color: "#fff", padding: "18px", fontSize: 18 }
-          }, "Sí, continuar igual"),
-          /*#__PURE__*/React.createElement("button", {
-            onClick: () => setShortRestPrompt(false),
-            style: { color: C.textDim, fontSize: 15 }
-          }, "Seguir descansando")
-        )
-      : /*#__PURE__*/React.createElement("div", { className: "w-full max-w-sm text-center space-y-8" },
-          /*#__PURE__*/React.createElement("p", { style: { color: C.textDim, fontSize: 14, fontVariantNumeric: "tabular-nums", letterSpacing: 2 } },
-            "DESCANSANDO · " + mins + ":" + secs
-          ),
-          /*#__PURE__*/React.createElement("button", {
-            onClick: handleNext,
-            className: "w-full rounded-2xl font-bold",
-            style: { background: C.green, color: "#fff", padding: "22px", fontSize: 20 }
-          }, isLast ? "Guardar sesión" : "Iniciar " + nextExName)
-        )
+    /*#__PURE__*/React.createElement("div", { className: "w-full max-w-sm text-center space-y-8" },
+      /*#__PURE__*/React.createElement("p", {
+        style: { color: C.textDim, fontSize: 13, fontVariantNumeric: "tabular-nums", letterSpacing: 2 }
+      }, "DESCANSANDO · " + mins + ":" + secs),
+      /*#__PURE__*/React.createElement("button", {
+        onClick: () => onNext(elapsed),
+        className: "w-full rounded-2xl font-bold",
+        style: { background: C.green, color: "#fff", padding: "22px", fontSize: 20 }
+      }, nextLabel)
+    )
   );
 }
 
@@ -2678,50 +2698,78 @@ function SessionScreen({
     return null;
   };
   const draft = loadDraft();
-  const [date, setDate] = useState(draft ? draft.date : todayISO());
+  const [date] = useState(draft ? draft.date : todayISO());
   const [exercises, setExercises] = useState(() => draft ? draft.exercises : buildExercisesFromLastSession(routine, lastSession));
   const [startedAt] = useState(() => draft ? draft.startedAt : new Date().toISOString());
-  // Sequential flow: currentIdx = which exercise we're on
-  const [currentIdx, setCurrentIdx] = useState(() => {
-    if (draft && draft.currentIdx !== undefined) return draft.currentIdx;
-    return 0;
-  });
-  const [restingSince, setRestingSince] = useState(null); // ISO timestamp when rest started
+  // exIdx = current exercise, setIdx = current set within that exercise
+  const [exIdx, setExIdx] = useState(() => draft?.exIdx ?? 0);
+  const [setIdx, setSetIdx] = useState(() => draft?.setIdx ?? 0);
+  const [resting, setResting] = useState(false); // showing rest timer
   const [saving, setSaving] = useState(false);
   const [savedId, setSavedId] = useState(null);
   const [resumedFromDraft] = useState(!!draft);
+  const [rirSheet, setRirSheet] = useState(null);
+  const [showOverview, setShowOverview] = useState(false);
 
-  const saveDraft = (exs, idx, sa) => {
+  const saveDraft = (exs, ei, si) => {
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({
-        date: todayISO(), exercises: exs, startedAt: sa,
-        currentIdx: idx, savedAt: new Date().toISOString()
+        date: todayISO(), exercises: exs, startedAt,
+        exIdx: ei, setIdx: si, savedAt: new Date().toISOString()
       }));
     } catch(e) {}
   };
   const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch(e) {} };
 
-  function updateExSets(sets) {
+  // Current exercise and set
+  const curEx = exercises[exIdx] || exercises[0];
+  const normalSets = (curEx?.sets || []).filter(s => s.type === "normal");
+  const curSet = normalSets[setIdx] || normalSets[0];
+  const isLastSet = setIdx >= normalSets.length - 1;
+  const isLastEx = exIdx >= exercises.length - 1;
+  const isVeryLast = isLastSet && isLastEx;
+
+  function updateCurSet(field, val) {
     const arr = exercises.slice();
-    arr[currentIdx] = { ...arr[currentIdx], sets };
+    const ex = { ...arr[exIdx] };
+    const sets = ex.sets.slice();
+    // Update the current normal set
+    let ni = 0;
+    sets.forEach((s, i) => {
+      if (s.type === "normal") {
+        if (ni === setIdx) sets[i] = { ...s, [field]: val };
+        ni++;
+      }
+    });
+    ex.sets = sets;
+    arr[exIdx] = ex;
     setExercises(arr);
-    saveDraft(arr, currentIdx, startedAt);
+    saveDraft(arr, exIdx, setIdx);
   }
-  const [rirSheet, setRirSheet] = useState(null);
-  const [showOverview, setShowOverview] = useState(false);
 
   function markDone() {
-    setRirSheet({ exName: exercises[currentIdx]?.name || "" });
+    setRirSheet({ exName: curEx?.name || "", setNum: setIdx + 1 });
   }
 
   function confirmRir(rir) {
     setRirSheet(null);
+    // Store RIR on the current set
     const arr = exercises.slice();
-    arr[currentIdx] = { ...arr[currentIdx], rir: rir !== null ? rir : undefined };
+    const ex = { ...arr[exIdx] };
+    const sets = ex.sets.slice();
+    let ni = 0;
+    sets.forEach((s, i) => {
+      if (s.type === "normal") {
+        if (ni === setIdx) sets[i] = { ...s, rir };
+        ni++;
+      }
+    });
+    ex.sets = sets;
+    arr[exIdx] = ex;
     setExercises(arr);
-    const isLastEx = currentIdx >= exercises.length - 1;
-    if (isLastEx) {
-      // Last exercise — save directly, no rest timer
+
+    if (isVeryLast) {
+      // Last set of last exercise — save directly
       setSaving(true);
       onSave({
         routineId: routine.id, routineName: routine.name,
@@ -2731,30 +2779,39 @@ function SessionScreen({
         if (saved) { clearDraft(); setSavedId(saved.id); }
       });
     } else {
-      saveDraft(arr, currentIdx, startedAt);
-      setRestingSince(new Date().toISOString());
+      saveDraft(arr, exIdx, setIdx);
+      setResting(true);
     }
   }
 
-  async function startNext(restSeconds) {
-    // Save rest time on current exercise
+  function startNextSet(restSeconds) {
+    setResting(false);
+    // Store rest time on current set
     const arr = exercises.slice();
-    arr[currentIdx] = { ...arr[currentIdx], restSeconds };
+    const ex = { ...arr[exIdx] };
+    const sets = ex.sets.slice();
+    let ni = 0;
+    sets.forEach((s, i) => {
+      if (s.type === "normal") {
+        if (ni === setIdx) sets[i] = { ...s, restSeconds };
+        ni++;
+      }
+    });
+    ex.sets = sets;
+    arr[exIdx] = ex;
     setExercises(arr);
-    const nextIdx = currentIdx + 1;
-    if (nextIdx >= exercises.length) {
-      // All done — save session
-      setSaving(true);
-      const saved = await onSave({
-        routineId: routine.id, routineName: routine.name,
-        date, exercises: arr, startedAt, endedAt: new Date().toISOString()
-      });
-      setSaving(false);
-      if (saved) { clearDraft(); setSavedId(saved.id); }
+
+    if (isLastSet) {
+      // Move to next exercise
+      const nextExIdx = exIdx + 1;
+      setExIdx(nextExIdx);
+      setSetIdx(0);
+      saveDraft(arr, nextExIdx, 0);
     } else {
-      setCurrentIdx(nextIdx);
-      setRestingSince(null);
-      saveDraft(arr, nextIdx, startedAt);
+      // Next set in same exercise
+      const nextSetIdx = setIdx + 1;
+      setSetIdx(nextSetIdx);
+      saveDraft(arr, exIdx, nextSetIdx);
     }
   }
   async function handleSave() {
@@ -2778,20 +2835,18 @@ function SessionScreen({
     });
   }
 
-  // Resting state — show rest timer
-  if (restingSince !== null) {
-    const isLast = currentIdx >= exercises.length - 1;
-    const nextEx = !isLast ? exercises[currentIdx + 1] : null;
+  // Resting state
+  if (resting) {
+    const nextLabel = isLastSet
+      ? (isLastEx ? "Guardar sesión" : "Iniciar " + (exercises[exIdx + 1]?.name || ""))
+      : "Serie " + (setIdx + 2) + "/" + normalSets.length;
     return /*#__PURE__*/React.createElement(RestTimer, {
-      key: currentIdx,
-      nextExName: nextEx ? nextEx.name : "",
-      isLast,
-      onNext: startNext
+      key: exIdx + "-" + setIdx,
+      onNext: startNextSet,
+      nextLabel
     });
   }
 
-  // Active exercise
-  const ex = exercises[currentIdx];
   const RIR_OPTIONS = [
     { label: "+3", sub: "me sobraban reps", rir: 3 },
     { label: "+2", sub: "podría haber hecho 2 más", rir: 2 },
@@ -2800,9 +2855,7 @@ function SessionScreen({
     { label: "✗ Fallé", sub: "no llegué a las reps", rir: -1 },
   ];
 
-  return /*#__PURE__*/React.createElement("div", {
-    className: "pb-10"
-  },
+  return /*#__PURE__*/React.createElement("div", { className: "pb-10" },
   rirSheet && /*#__PURE__*/React.createElement(React.Fragment, null,
     /*#__PURE__*/React.createElement("div", {
       onClick: () => confirmRir(null),
@@ -2819,8 +2872,11 @@ function SessionScreen({
         style: { width: 40, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.2)", margin: "0 auto 20px" }
       }),
       /*#__PURE__*/React.createElement("p", {
-        style: { color: C.text, fontSize: 22, fontWeight: "700", marginBottom: 4 }
+        style: { color: C.text, fontSize: 22, fontWeight: "700", marginBottom: 2 }
       }, rirSheet.exName),
+      /*#__PURE__*/React.createElement("p", {
+        style: { color: C.textDim, fontSize: 14, marginBottom: 4 }
+      }, "Serie " + rirSheet.setNum),
       /*#__PURE__*/React.createElement("p", {
         style: { color: C.textDim, fontSize: 16, marginBottom: 20 }
       }, "¿Cuánto te costó?"),
@@ -2870,21 +2926,21 @@ function SessionScreen({
           style: {
             padding: "12px 0",
             borderBottom: i < exercises.length - 1 ? "1px solid rgba(255,255,255,0.08)" : "none",
-            opacity: i < currentIdx ? 0.5 : 1
+            opacity: i < exIdx ? 0.5 : 1
           }
         },
           /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
             /*#__PURE__*/React.createElement("span", {
               style: {
                 width: 26, height: 26, borderRadius: 13, flexShrink: 0,
-                background: i < currentIdx ? C.green : i === currentIdx ? C.blue : "rgba(255,255,255,0.1)",
+                background: i < exIdx ? C.green : i === exIdx ? C.blue : "rgba(255,255,255,0.1)",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: 12, fontWeight: "700", color: "#fff"
               }
-            }, i < currentIdx ? "✓" : i + 1),
+            }, i < exIdx ? "✓" : i + 1),
             /*#__PURE__*/React.createElement("span", {
-              style: { color: i === currentIdx ? C.text : C.textDim, fontSize: 16,
-                fontWeight: i === currentIdx ? "700" : "400" }
+              style: { color: i === exIdx ? C.text : C.textDim, fontSize: 16,
+                fontWeight: i === exIdx ? "700" : "400" }
             }, e.name)
           )
         )
@@ -2893,7 +2949,7 @@ function SessionScreen({
   ),
   /*#__PURE__*/React.createElement(BackHeader, {
     onBack: onCancel,
-    title: (currentIdx + 1) + "/" + exercises.length + " · " + ex.name,
+    title: (exIdx + 1) + "/" + exercises.length + " · " + curEx.name,
     right: /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14 } },
       /*#__PURE__*/React.createElement("button", {
         onClick: () => setShowOverview(true),
@@ -2913,29 +2969,71 @@ function SessionScreen({
         "Sesión recuperada"
       )
     ),
-    /*#__PURE__*/React.createElement(ExercisePlanEditor, {
-      sets: ex.sets,
-      onChange: updateExSets,
-      bodyweight: ex.bodyweight,
-      onToggleBodyweight: v => {
-        const arr = exercises.slice();
-        arr[currentIdx] = { ...arr[currentIdx], bodyweight: v };
-        setExercises(arr);
-      }
-    }),
+    /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center justify-between mb-4"
+    },
+      /*#__PURE__*/React.createElement("p", {
+        style: { color: C.textDim, fontSize: 14, fontWeight: "600" }
+      }, "Serie " + (setIdx + 1) + " de " + normalSets.length),
+      curSet && /*#__PURE__*/React.createElement("div", { className: "flex gap-4" },
+        /*#__PURE__*/React.createElement("div", { className: "text-center" },
+          /*#__PURE__*/React.createElement("p", { style: { color: C.textDim2, fontSize: 11, marginBottom: 2 } }, "REPS"),
+          /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-2" },
+            /*#__PURE__*/React.createElement("button", {
+              onClick: () => updateCurSet("reps", Math.max(1, (curSet.reps || 1) - 1)),
+              className: "w-8 h-8 rounded-full flex items-center justify-center",
+              style: { background: C.surface2 }
+            }, /*#__PURE__*/React.createElement(Icon, { name: "minus", size: 14, color: C.text })),
+            /*#__PURE__*/React.createElement("span", {
+              style: { color: C.text, fontSize: 22, fontWeight: "700", minWidth: 32, textAlign: "center", fontVariantNumeric: "tabular-nums" }
+            }, curSet.reps || 0),
+            /*#__PURE__*/React.createElement("button", {
+              onClick: () => updateCurSet("reps", (curSet.reps || 0) + 1),
+              className: "w-8 h-8 rounded-full flex items-center justify-center",
+              style: { background: C.surface2 }
+            }, /*#__PURE__*/React.createElement(Icon, { name: "plus", size: 14, color: C.text }))
+          )
+        ),
+        /*#__PURE__*/React.createElement("div", { className: "text-center" },
+          /*#__PURE__*/React.createElement("p", { style: { color: C.textDim2, fontSize: 11, marginBottom: 2 } },
+            curEx.bodyweight ? "PESO ADIC." : "PESO (KG)"
+          ),
+          /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-2" },
+            /*#__PURE__*/React.createElement("button", {
+              onClick: () => updateCurSet("weight", Math.max(0, ((curSet.weight || 0) * 2 - 5) / 2)),
+              className: "w-8 h-8 rounded-full flex items-center justify-center",
+              style: { background: C.surface2 }
+            }, /*#__PURE__*/React.createElement(Icon, { name: "minus", size: 14, color: C.text })),
+            /*#__PURE__*/React.createElement("span", {
+              style: { color: C.text, fontSize: 22, fontWeight: "700", minWidth: 40, textAlign: "center", fontVariantNumeric: "tabular-nums" }
+            }, curSet.weight || 0),
+            /*#__PURE__*/React.createElement("button", {
+              onClick: () => updateCurSet("weight", ((curSet.weight || 0) * 2 + 5) / 2),
+              className: "w-8 h-8 rounded-full flex items-center justify-center",
+              style: { background: C.surface2 }
+            }, /*#__PURE__*/React.createElement(Icon, { name: "plus", size: 14, color: C.text }))
+          )
+        )
+      )
+    ),
     /*#__PURE__*/React.createElement("button", {
       onClick: markDone,
-      className: "mt-6 w-full flex items-center justify-center gap-2 rounded-2xl py-5 text-xl font-bold",
+      className: "w-full flex items-center justify-center gap-2 rounded-2xl py-5 text-xl font-bold",
       style: { background: C.green, color: C.greenText, opacity: saving ? 0.7 : 1 }
     }, /*#__PURE__*/React.createElement(Icon, { name: "check", size: 22 }),
       saving ? "Guardando..." : "Listo"
     ),
-    currentIdx < exercises.length - 1 && /*#__PURE__*/React.createElement("p", {
-      className: "text-center mt-3 text-sm",
-      style: { color: C.textDim }
-    }, "Siguiente: ", /*#__PURE__*/React.createElement("span", {
-      style: { color: C.text, fontWeight: "600" }
-    }, exercises[currentIdx + 1].name))
+    isLastSet
+      ? !isLastEx && /*#__PURE__*/React.createElement("p", {
+          className: "text-center mt-3 text-sm",
+          style: { color: C.textDim }
+        }, "Siguiente ejercicio: ", /*#__PURE__*/React.createElement("span", {
+          style: { color: C.text, fontWeight: "600" }
+        }, exercises[exIdx + 1]?.name))
+      : /*#__PURE__*/React.createElement("p", {
+          className: "text-center mt-3 text-sm",
+          style: { color: C.textDim }
+        }, "Después: Serie " + (setIdx + 2) + " de " + normalSets.length)
   ));
 }
 
@@ -3428,6 +3526,9 @@ function InsightsScreen({
   const [editingContext, setEditingContext] = useState(false);
   const [contextDraft, setContextDraft] = useState(insightsContext || "");
   const [chatOpen, setChatOpen] = useState(null); // null=closed, "new"=new, number=resume index
+  const [chatSearch, setChatSearch] = useState("");
+  const [chatSearchOpen, setChatSearchOpen] = useState(false);
+  const [chatTimeFilter, setChatTimeFilter] = useState("all"); // all | week | month
   const [milestones, setMilestones] = useState([]);
   const [loadingMilestones, setLoadingMilestones] = useState(true);
 
@@ -3627,37 +3728,90 @@ function InsightsScreen({
     style: { color: C.blue }
   }, "Refinar")))))))))),
   milestones.length > 0 && /*#__PURE__*/React.createElement("div", { className: "mt-6" },
-    /*#__PURE__*/React.createElement("p", {
-      className: "text-xs font-bold uppercase mb-3",
-      style: { color: C.textDim }
-    }, "Conversaciones guardadas"),
-    /*#__PURE__*/React.createElement("div", { className: "space-y-3" },
-      milestones.map((m, i) =>
+    /*#__PURE__*/React.createElement("div", { className: "flex items-center justify-between mb-3" },
+      /*#__PURE__*/React.createElement("p", {
+        className: "text-xs font-bold uppercase",
+        style: { color: C.textDim }
+      }, "Conversaciones guardadas"),
+      /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-2" },
         /*#__PURE__*/React.createElement("button", {
-          key: i,
-          onClick: () => setChatOpen(i),
-          className: "w-full rounded-2xl p-4 text-left",
-          style: { background: C.surface, border: `1px solid ${C.border}` }
-        },
-          /*#__PURE__*/React.createElement("div", { className: "flex items-center justify-between mb-2" },
-            /*#__PURE__*/React.createElement("p", {
-              className: "text-xs",
-              style: { color: C.textDim, fontVariantNumeric: "tabular-nums" }
-            }, fmtFull(m.date)),
-            /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-2" },
-              m.messages && /*#__PURE__*/React.createElement("p", {
-                className: "text-xs",
-                style: { color: C.textDim2 }
-              }, m.messages.length, " msgs"),
-              /*#__PURE__*/React.createElement(Icon, { name: "chevronRight", size: 14, color: C.textDim2 })
-            )
-          ),
-          /*#__PURE__*/React.createElement("p", {
-            className: "text-sm",
-            style: { color: C.text, lineHeight: 1.4 }
-          }, m.preview || (m.text ? m.text.slice(0, 120) : ""))
+          onClick: () => setChatSearchOpen(v => !v),
+          className: "p-1.5 rounded-lg",
+          style: { background: chatSearchOpen ? C.blue : "transparent" }
+        }, /*#__PURE__*/React.createElement(Icon, { name: "search", size: 15, color: chatSearchOpen ? "#fff" : C.textDim })),
+        ["all","week","month"].map(f =>
+          /*#__PURE__*/React.createElement("button", {
+            key: f,
+            onClick: () => setChatTimeFilter(f),
+            className: "text-xs font-medium px-2.5 py-1 rounded-full",
+            style: chatTimeFilter === f
+              ? { background: C.blue, color: "#fff" }
+              : { background: C.surface2, color: C.textDim }
+          }, f === "all" ? "Todo" : f === "week" ? "Semana" : "Mes")
         )
       )
+    ),
+    chatSearchOpen && /*#__PURE__*/React.createElement("div", { className: "relative mb-3" },
+      /*#__PURE__*/React.createElement("input", {
+        autoFocus: true,
+        value: chatSearch,
+        onChange: e => setChatSearch(e.target.value),
+        placeholder: "Buscar en conversaciones...",
+        className: "w-full rounded-xl py-2.5 text-sm outline-none",
+        style: {
+          background: C.surface, color: C.text,
+          border: `1px solid ${C.border}`,
+          paddingLeft: 14, paddingRight: chatSearch ? 36 : 14
+        }
+      }),
+      chatSearch && /*#__PURE__*/React.createElement("button", {
+        onClick: () => setChatSearch(""),
+        className: "absolute right-3 top-0 bottom-0 flex items-center"
+      }, /*#__PURE__*/React.createElement(Icon, { name: "x", size: 14, color: C.textDim }))
+    ),
+    /*#__PURE__*/React.createElement("div", { className: "space-y-3" },
+      (() => {
+        const now = new Date();
+        const weekAgo = new Date(now - 7*24*60*60*1000).toISOString().slice(0,10);
+        const monthAgo = new Date(now - 30*24*60*60*1000).toISOString().slice(0,10);
+        return milestones
+          .map((m, i) => ({ m, i }))
+          .filter(({ m }) => {
+            if (chatTimeFilter === "week" && m.date < weekAgo) return false;
+            if (chatTimeFilter === "month" && m.date < monthAgo) return false;
+            if (chatSearch.trim()) {
+              const q = chatSearch.toLowerCase();
+              const preview = (m.preview || m.text || "").toLowerCase();
+              if (!preview.includes(q)) return false;
+            }
+            return true;
+          })
+          .map(({ m, i }) =>
+            /*#__PURE__*/React.createElement("button", {
+              key: i,
+              onClick: () => setChatOpen(i),
+              className: "w-full rounded-2xl p-4 text-left",
+              style: { background: C.surface, border: `1px solid ${C.border}` }
+            },
+              /*#__PURE__*/React.createElement("div", { className: "flex items-center justify-between mb-2" },
+                /*#__PURE__*/React.createElement("p", {
+                  className: "text-xs",
+                  style: { color: C.textDim, fontVariantNumeric: "tabular-nums" }
+                }, fmtFull(m.date)),
+                /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-2" },
+                  m.messages && /*#__PURE__*/React.createElement("p", {
+                    className: "text-xs", style: { color: C.textDim2 }
+                  }, m.messages.length, " msgs"),
+                  /*#__PURE__*/React.createElement(Icon, { name: "chevronRight", size: 14, color: C.textDim2 })
+                )
+              ),
+              /*#__PURE__*/React.createElement("p", {
+                className: "text-sm",
+                style: { color: C.text, lineHeight: 1.4 }
+              }, m.preview || (m.text ? m.text.slice(0, 120) : ""))
+            )
+          );
+      })()
     )
   ),
   refineTarget && /*#__PURE__*/React.createElement("div", {
