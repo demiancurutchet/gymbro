@@ -42,7 +42,7 @@
 <body>
 <div id="root"></div>
 
-<script>window.GYMBRO_TEST=true;</script><script>(function(){const o=firebase.firestore.bind(firebase);firebase.firestore=function(){const db=o();const oc=db.collection.bind(db);db.collection=function(n){const c=oc(n);const nw=()=>Promise.resolve({id:'test-'+Date.now()});c.add=()=>{console.warn('[TEST] blocked:',n);return nw();};const od=c.doc.bind(c);c.doc=function(id){const d=od(id);d.set=()=>{console.warn('[TEST] blocked:',n,id);return Promise.resolve();};d.update=()=>Promise.resolve();d.delete=()=>{console.warn('[TEST] blocked:',n,id);return Promise.resolve();};return d;};return c;};return db;};})();</script><script>
+<script>window.GYMBRO_TEST=true;</script><script>(function(){const o=firebase.firestore.bind(firebase);firebase.firestore=function(){const db=o();const oc=db.collection.bind(db);db.collection=function(n){const c=oc(n);const nw=()=>Promise.resolve({id:'test-'+Date.now()});c.add=()=>{console.warn('[TEST] blocked:',n);return nw();};const od=c.doc.bind(c);c.doc=function(id){const d=od(id);d.set=()=>Promise.resolve();d.update=()=>Promise.resolve();d.delete=()=>Promise.resolve();return d;};return c;};return db;};})();</script><script>
 const {
   useState,
   useEffect,
@@ -761,7 +761,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.6.2";
+const APP_VERSION = "2.6.3";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -2956,10 +2956,37 @@ function SessionScreen({
       doneSetIdxs,
       onSetDone: markSetDone
     }),
-    !isLastEx && /*#__PURE__*/React.createElement("p", {
-      className: "text-center mt-3 text-sm",
-      style: { color: C.textDim }
-    }, "Siguiente: ", /*#__PURE__*/React.createElement("span", { style: { color: C.text, fontWeight: "600" } }, exercises[exIdx + 1]?.name))
+    (() => {
+      // Find the first undone normal set
+      let nextPending = -1;
+      let ni = 0;
+      (curEx?.sets || []).forEach(s => {
+        if (s.type === "normal") {
+          if (nextPending === -1 && !doneSetIdxs.has(ni)) nextPending = ni;
+          ni++;
+        }
+      });
+      const allDone = nextPending === -1;
+      const label = allDone
+        ? (isLastEx ? "Guardar sesión" : "Siguiente ejercicio: " + (exercises[exIdx + 1]?.name || ""))
+        : "Listo — Serie " + (nextPending + 1) + " de " + normalSets.length;
+      return /*#__PURE__*/React.createElement("button", {
+        onClick: () => {
+          if (allDone) {
+            if (!isLastEx) {
+              // Manually advance to next exercise (edge case - all sets done without rest)
+              const nextExIdx = exIdx + 1;
+              setExIdx(nextExIdx);
+              saveDraft(exercises, nextExIdx);
+            }
+          } else {
+            markSetDone(nextPending);
+          }
+        },
+        className: "mt-6 w-full flex items-center justify-center gap-2 rounded-2xl py-5 text-xl font-bold",
+        style: { background: C.green, color: "#fff", opacity: saving ? 0.7 : 1 }
+      }, /*#__PURE__*/React.createElement(Icon, { name: "check", size: 22, color: "#fff" }), label);
+    })()
   ));
 }
 
