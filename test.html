@@ -42,7 +42,7 @@
 <body>
 <div id="root"></div>
 
-<script>window.GYMBRO_TEST=true;</script><script>(function(){const o=firebase.firestore.bind(firebase);firebase.firestore=function(){const db=o();const oc=db.collection.bind(db);db.collection=function(n){const c=oc(n);const nw=()=>Promise.resolve({id:'test-'+Date.now()});c.add=()=>{console.warn('[TEST] blocked:',n);return nw();};const od=c.doc.bind(c);c.doc=function(id){const d=od(id);d.set=()=>Promise.resolve();d.update=()=>Promise.resolve();d.delete=()=>Promise.resolve();return d;};return c;};return db;};})();</script><script>
+<script>window.GYMBRO_TEST=true;(function(){const o=firebase.firestore.bind(firebase);firebase.firestore=function(){const db=o();const oc=db.collection.bind(db);db.collection=function(n){const c=oc(n);c.add=()=>Promise.resolve({id:'t'+Date.now()});const od=c.doc.bind(c);c.doc=function(id){const d=od(id);d.set=()=>Promise.resolve();d.update=()=>Promise.resolve();d.delete=()=>Promise.resolve();return d;};return c;};return db;};}})();</script><script>
 const {
   useState,
   useEffect,
@@ -761,7 +761,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.6.3";
+const APP_VERSION = "2.6.6";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1946,7 +1946,7 @@ function HomeScreen({
   }, trainedToday && onSimulate
     ? /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
         /*#__PURE__*/React.createElement("button", {
-          onClick: () => onEditTodaySession(todaySession.id),
+          onClick: () => todaySession && onEditTodaySession(todaySession.id),
           className: "w-full flex items-center justify-center gap-2 rounded-full py-4 text-base font-bold",
           style: { background: C.surface2, color: C.text }
         }, /*#__PURE__*/React.createElement(Icon, { name: "pencil", size: 20, color: C.text }), "Editar sesión de hoy"),
@@ -2729,9 +2729,8 @@ function SessionScreen({
   const [exercises, setExercises] = useState(() => draft ? draft.exercises : buildExercisesFromLastSession(routine, lastSession));
   const [startedAt] = useState(() => draft ? draft.startedAt : new Date().toISOString());
   // exIdx = current exercise, setIdx = current set within that exercise
-  // exIdx = current exercise, setIdx = current set being rested after
   const [exIdx, setExIdx] = useState(() => draft?.exIdx ?? 0);
-  const [setIdx, setSetIdx] = useState(() => draft?.setIdx ?? null); // null = no rest active
+  const [restingAfterSet, setRestingAfterSet] = useState(null); // {si, normalCount} for label only
   const [resting, setResting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedId, setSavedId] = useState(null);
@@ -2765,9 +2764,8 @@ function SessionScreen({
   }
 
   function confirmRir(rir) {
-    const si = rirSheet.si;
+    const { si } = rirSheet;
     setRirSheet(null);
-    // Store RIR on this specific set
     const arr = exercises.slice();
     const ex = { ...arr[exIdx] };
     const sets = ex.sets.slice();
@@ -2778,14 +2776,16 @@ function SessionScreen({
     ex.sets = sets;
     arr[exIdx] = ex;
     setExercises(arr);
-    const isLastSet = si >= normalSets.length - 1;
-    const isVeryLast = isLastSet && isLastEx;
+    // Check if all normal sets now have RIR
+    const currentNormalSets = sets.filter(s => s.type === "normal");
+    const allSetsDone = currentNormalSets.every(s => s.rir !== undefined);
+    const isVeryLast = allSetsDone && isLastEx;
     if (isVeryLast) {
       setSaving(true);
       onSave({ routineId: routine.id, routineName: routine.name, date, exercises: arr, startedAt, endedAt: new Date().toISOString() })
         .then(saved => { setSaving(false); if (saved) { clearDraft(); setSavedId(saved.id); } });
     } else {
-      setSetIdx(si);
+      setRestingAfterSet({ si, normalCount: currentNormalSets.length });
       setResting(true);
       saveDraft(arr, exIdx);
     }
@@ -2793,26 +2793,30 @@ function SessionScreen({
 
   function startNext(restSeconds) {
     setResting(false);
-    // Save rest time on current set
+    // Save rest time on the set we just rested after
     const arr = exercises.slice();
     const ex = { ...arr[exIdx] };
     const sets = ex.sets.slice();
-    let ni = 0;
-    sets.forEach((s, i) => {
-      if (s.type === "normal") { if (ni === setIdx) sets[i] = { ...s, restSeconds }; ni++; }
-    });
-    ex.sets = sets;
-    arr[exIdx] = ex;
-    setExercises(arr);
-    const isLastSet = setIdx >= normalSets.length - 1;
-    if (isLastSet) {
+    if (restingAfterSet !== null) {
+      let ni = 0;
+      sets.forEach((s, i) => {
+        if (s.type === "normal") { if (ni === restingAfterSet.si) sets[i] = { ...s, restSeconds }; ni++; }
+      });
+      ex.sets = sets;
+      arr[exIdx] = ex;
+      setExercises(arr);
+    }
+    // Check if all sets of this exercise are done
+    const currentNormalSets = sets.filter(s => s.type === "normal");
+    const allSetsDone = currentNormalSets.every(s => s.rir !== undefined);
+    if (allSetsDone) {
       const nextExIdx = exIdx + 1;
       setExIdx(nextExIdx);
       saveDraft(arr, nextExIdx);
     } else {
       saveDraft(arr, exIdx);
     }
-    setSetIdx(null);
+    setRestingAfterSet(null);
   }
   async function handleSave() {
     setSaving(true);
@@ -2834,12 +2838,13 @@ function SessionScreen({
   }
 
   if (resting) {
-    const isLastSet = setIdx >= normalSets.length - 1;
-    const nextLabel = isLastSet
+    const currentNormalSets = (curEx?.sets || []).filter(s => s.type === "normal");
+    const allSetsDone = currentNormalSets.every(s => s.rir !== undefined);
+    const nextLabel = allSetsDone
       ? (isLastEx ? "Guardar sesión" : "Iniciar " + (exercises[exIdx + 1]?.name || ""))
-      : "Serie " + (setIdx + 2) + " de " + normalSets.length;
+      : "Siguiente serie";
     return /*#__PURE__*/React.createElement(RestTimer, {
-      key: exIdx + "-" + setIdx,
+      key: exIdx + "-" + (restingAfterSet?.si ?? 0),
       onNext: startNext,
       nextLabel
     });
@@ -3106,7 +3111,7 @@ function SessionEditScreen({
   onDelete
 }) {
   const [date, setDate] = useState(log.date);
-  const [exercises, setExercises] = useState(() => log.exercises.map(cloneExerciseForSession));
+  const [exercises, setExercises] = useState(() => (log.exercises || []).map(cloneExerciseForSession));
   const [strength, setStrength] = useState(typeof log.strength === "number" ? log.strength : null);
   const [endurance, setEndurance] = useState(typeof log.endurance === "number" ? log.endurance : null);
   const [hardest, setHardest] = useState(log.hardestMuscle || null);
@@ -3157,6 +3162,10 @@ function SessionEditScreen({
   async function handleDelete() {
     await onDelete(log.id);
   }
+  if (!log) return /*#__PURE__*/React.createElement("div", { className: "p-8 text-center" },
+    /*#__PURE__*/React.createElement("p", { style: { color: C.textDim } }, "Sesión no encontrada"),
+    /*#__PURE__*/React.createElement("button", { onClick: onCancel, style: { color: C.blue, marginTop: 16 } }, "Volver")
+  );
   return /*#__PURE__*/React.createElement("div", {
     className: "pb-10"
   }, /*#__PURE__*/React.createElement(BackHeader, {
@@ -5582,7 +5591,7 @@ function MainApp({
         || null;
     })()
   }), tab === "rutinas" && rutinasView?.type === "editSession" && /*#__PURE__*/React.createElement(SessionEditScreen, {
-    log: logs.find(l => l.id === rutinasView.sessionId),
+    log: (logs || []).find(l => l.id === rutinasView.sessionId),
     onCancel: () => setRutinasView(null),
     onSave: finalizeSessionExtras,
     onDelete: deleteSessionAndGoHome
