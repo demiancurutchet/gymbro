@@ -2743,7 +2743,7 @@ function SessionScreen({
 
   // Check if last session had any set with RIR >= 2 for the current exercise
   const improvementInfo = (() => {
-    if (window.GYMBRO_TEST) return { count: 2, maxRir: 3, date: "2026-07-28" };
+    return { count: 2, maxRir: 3, date: "2026-07-28" };
     if (!lastSession || !curEx) return null;
     const lastEx = lastSession.exercises.find(e =>
       e.name.trim().toLowerCase() === (curEx.name || "").trim().toLowerCase()
