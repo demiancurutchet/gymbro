@@ -763,7 +763,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.7.1";
+const APP_VERSION = "2.7.2";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -2726,20 +2726,7 @@ function SessionScreen({
   const [showOverview, setShowOverview] = useState(false);
   const [showImprovement, setShowImprovement] = useState(false);
 
-  // Check if last session had any set with RIR >= 2 for the current exercise
-  const improvementInfo = (() => {
-    if (!lastSession) return null;
-    const ex = curEx;
-    const lastEx = lastSession.exercises.find(e =>
-      e.name.trim().toLowerCase() === ex.name.trim().toLowerCase()
-    );
-    if (!lastEx) return null;
-    const setsWithMargin = (lastEx.sets || [])
-      .filter(s => s.type === "normal" && s.rir !== undefined && s.rir >= 2);
-    if (setsWithMargin.length === 0) return null;
-    const maxRir = Math.max(...setsWithMargin.map(s => s.rir));
-    return { count: setsWithMargin.length, maxRir, date: lastSession.date, sets: setsWithMargin };
-  })();
+
 
   const saveDraft = (exs, ei) => {
     try {
@@ -2753,6 +2740,20 @@ function SessionScreen({
 
   const curEx = exercises[exIdx] || exercises[0];
   const isLastEx = exIdx >= exercises.length - 1;
+
+  // Check if last session had any set with RIR >= 2 for the current exercise
+  const improvementInfo = (() => {
+    if (!lastSession || !curEx) return null;
+    const lastEx = lastSession.exercises.find(e =>
+      e.name.trim().toLowerCase() === (curEx.name || "").trim().toLowerCase()
+    );
+    if (!lastEx) return null;
+    const setsWithMargin = (lastEx.sets || [])
+      .filter(s => s.type === "normal" && s.rir !== undefined && s.rir >= 2);
+    if (setsWithMargin.length === 0) return null;
+    const maxRir = Math.max(...setsWithMargin.map(s => s.rir));
+    return { count: setsWithMargin.length, maxRir, date: lastSession.date };
+  })();
   const normalSets = (curEx?.sets || []).filter(s => s.type === "normal");
 
   function updateExSets(sets) {
