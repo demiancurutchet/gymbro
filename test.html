@@ -2958,16 +2958,15 @@ function SessionScreen({
     improvementInfo && /*#__PURE__*/React.createElement(React.Fragment, null,
       /*#__PURE__*/React.createElement("button", {
         onClick: () => setShowImprovement(v => !v),
-        className: "mb-3 flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold",
+        className: "mb-4 w-full flex items-center justify-center gap-2 rounded-2xl py-3 font-bold",
         style: {
-          background: showImprovement
-            ? "rgba(52,211,153,0.25)"
-            : "rgba(52,211,153,0.15)",
+          background: showImprovement ? "rgba(52,211,153,0.3)" : "rgba(52,211,153,0.18)",
           color: "#34D399",
-          border: "1px solid rgba(52,211,153,0.3)"
+          border: "1.5px solid rgba(52,211,153,0.5)",
+          fontSize: 15
         }
       },
-        /*#__PURE__*/React.createElement("span", { style: { fontSize: 13 } }, "✦"),
+        /*#__PURE__*/React.createElement("span", null, "✦"),
         "Podés mejorar este ejercicio"
       ),
       showImprovement && /*#__PURE__*/React.createElement("div", {
