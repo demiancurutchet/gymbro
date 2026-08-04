@@ -761,7 +761,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.6.6";
+const APP_VERSION = "2.6.7";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1352,7 +1352,9 @@ function ExercisePlanEditor({
   sets,
   onChange,
   bodyweight,
-  onToggleBodyweight
+  onToggleBodyweight,
+  doneSetIdxs,
+  onSetDone
 }) {
   const base = getBase(sets);
   const count = sets.length;
