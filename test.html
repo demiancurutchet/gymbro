@@ -289,8 +289,10 @@ function setSummary(s, bodyweight) {
   if (s.type === "drop") {
     return `Drop set · ${s.drops.map(d => bodyweight && !d.weight ? `${d.reps} reps` : `${d.reps}×${d.weight}kg`).join(" → ")}`;
   }
-  if (bodyweight && !s.weight) return `${s.reps} reps (peso corporal)`;
-  return `${s.reps} reps × ${s.weight} kg`;
+  const rir = s.rir !== undefined ? (s.rir < 0 ? " · Fallé" : ` · RIR ${s.rir}`) : "";
+  const rest = s.restSeconds ? ` · ${s.restSeconds}s desc.` : "";
+  if (bodyweight && !s.weight) return `${s.reps} reps (peso corporal)${rir}${rest}`;
+  return `${s.reps} reps × ${s.weight} kg${rir}${rest}`;
 }
 function cloneSetForSession(s) {
   return {
@@ -761,7 +763,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.6.7";
+const APP_VERSION = "2.7.0";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1528,24 +1530,7 @@ function ExercisePlanEditor({
     step: 0.5,
     onChange: changeWeight
   })),
-  onSetDone && /*#__PURE__*/React.createElement("div", { className: "space-y-2 my-2" },
-    normalSets.map((s, si) =>
-      /*#__PURE__*/React.createElement("div", {
-        key: s.id,
-        className: "flex items-center justify-between rounded-xl px-3 py-2.5",
-        style: { background: C.surface2 }
-      },
-        /*#__PURE__*/React.createElement("span", { className: "text-sm", style: { color: C.textDim } },
-          "Serie " + (si + 1) + " · " + (s.reps || 0) + " reps · " + (s.weight || 0) + "kg"
-        ),
-        /*#__PURE__*/React.createElement("button", {
-          onClick: () => { if (!doneSetIdxs?.has(si)) onSetDone(si); },
-          className: "text-xs font-bold px-3 py-1.5 rounded-full",
-          style: { background: doneSetIdxs?.has(si) ? C.surface : C.green, color: doneSetIdxs?.has(si) ? C.textDim : "#fff" }
-        }, doneSetIdxs?.has(si) ? "✓" : "Listo")
-      )
-    )
-  ),
+
   /*#__PURE__*/React.createElement("button", {
     onClick: enterCustom,
     className: "text-xs font-medium",
@@ -2951,6 +2936,22 @@ function SessionScreen({
     }, /*#__PURE__*/React.createElement(Icon, { name: "check", size: 14, color: C.green }),
       /*#__PURE__*/React.createElement("span", { className: "text-xs font-medium", style: { color: C.text } }, "Sesión recuperada")
     ),
+    /*#__PURE__*/React.createElement("div", { className: "mb-4 space-y-1" },
+      (() => {
+        const groups = [];
+        (curEx.sets || []).filter(s => s.type === "normal").forEach(s => {
+          const last = groups[groups.length - 1];
+          if (last && last.reps === s.reps && last.weight === s.weight) { last.count++; }
+          else { groups.push({ count: 1, reps: s.reps || 0, weight: s.weight || 0 }); }
+        });
+        return groups.map((g, i) =>
+          /*#__PURE__*/React.createElement("p", {
+            key: i, className: "text-sm",
+            style: { color: C.textDim, fontVariantNumeric: "tabular-nums" }
+          }, g.count + "×" + g.reps + " · " + g.weight + "kg")
+        );
+      })()
+    ),
     /*#__PURE__*/React.createElement(ExercisePlanEditor, {
       sets: curEx.sets,
       onChange: updateExSets,
@@ -3525,9 +3526,18 @@ function InsightsScreen({
     const sortedSessions = sessions.slice().sort((a,b) => a.date < b.date ? -1 : 1);
     const avgStrength = sessions.length ? (sessions.reduce((s,l) => s + (l.strength||0), 0) / sessions.length).toFixed(1) : "N/A";
     const avgEndurance = sessions.length ? (sessions.reduce((s,l) => s + (l.endurance||0), 0) / sessions.length).toFixed(1) : "N/A";
-    const lastN = sortedSessions.slice(-5).map(l => 
-      `  - ${l.date}: fuerza ${l.strength}/10, resistencia ${l.endurance}/10${l.hardestMuscle ? ", más costoso: " + l.hardestMuscle : ""}${l.painAreas && l.painAreas.length ? ", dolor en: " + l.painAreas.join("/") : ""}`
-    ).join("\n");
+    const lastN = sortedSessions.slice(-5).map(l => {
+      const exDetails = (l.exercises || []).slice(0, 3).map(ex => {
+        const sets = (ex.sets || []).filter(s => s.type === "normal");
+        const setStr = sets.map((s, i) => {
+          const rir = s.rir !== undefined ? ` RIR${s.rir}` : "";
+          const rest = s.restSeconds ? ` ${s.restSeconds}s descanso` : "";
+          return `s${i+1}:${s.reps}r×${s.weight}kg${rir}${rest}`;
+        }).join(", ");
+        return `${ex.name}(${setStr})`;
+      }).join("; ");
+      return `  - ${l.date}: ${exDetails}${l.painAreas && l.painAreas.length ? " | dolor: " + l.painAreas.join("/") : ""}`;
+    }).join("\n");
     const nutritionDays = {};
     (nutrition || []).forEach(e => { nutritionDays[e.date] = (nutritionDays[e.date]||0) + (Number(e.protein)||0); });
     const nutritionEntries = Object.entries(nutritionDays).sort((a,b) => b[0] > a[0] ? 1 : -1).slice(0, 14);
