@@ -289,8 +289,10 @@ function setSummary(s, bodyweight) {
   if (s.type === "drop") {
     return `Drop set · ${s.drops.map(d => bodyweight && !d.weight ? `${d.reps} reps` : `${d.reps}×${d.weight}kg`).join(" → ")}`;
   }
-  if (bodyweight && !s.weight) return `${s.reps} reps (peso corporal)`;
-  return `${s.reps} reps × ${s.weight} kg`;
+  const rir = s.rir !== undefined ? (s.rir < 0 ? " · Fallé" : ` · RIR ${s.rir}`) : "";
+  const rest = s.restSeconds ? ` · ${s.restSeconds}s desc.` : "";
+  if (bodyweight && !s.weight) return `${s.reps} reps (peso corporal)${rir}${rest}`;
+  return `${s.reps} reps × ${s.weight} kg${rir}${rest}`;
 }
 function cloneSetForSession(s) {
   return {
@@ -761,7 +763,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.6.4";
+const APP_VERSION = "2.7.4";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1352,7 +1354,9 @@ function ExercisePlanEditor({
   sets,
   onChange,
   bodyweight,
-  onToggleBodyweight
+  onToggleBodyweight,
+  doneSetIdxs,
+  onSetDone
 }) {
   const base = getBase(sets);
   const count = sets.length;
@@ -1526,24 +1530,7 @@ function ExercisePlanEditor({
     step: 0.5,
     onChange: changeWeight
   })),
-  onSetDone && /*#__PURE__*/React.createElement("div", { className: "space-y-2 my-2" },
-    normalSets.map((s, si) =>
-      /*#__PURE__*/React.createElement("div", {
-        key: s.id,
-        className: "flex items-center justify-between rounded-xl px-3 py-2.5",
-        style: { background: C.surface2 }
-      },
-        /*#__PURE__*/React.createElement("span", { className: "text-sm", style: { color: C.textDim } },
-          "Serie " + (si + 1) + " · " + (s.reps || 0) + " reps · " + (s.weight || 0) + "kg"
-        ),
-        /*#__PURE__*/React.createElement("button", {
-          onClick: () => { if (!doneSetIdxs?.has(si)) onSetDone(si); },
-          className: "text-xs font-bold px-3 py-1.5 rounded-full",
-          style: { background: doneSetIdxs?.has(si) ? C.surface : C.green, color: doneSetIdxs?.has(si) ? C.textDim : "#fff" }
-        }, doneSetIdxs?.has(si) ? "✓" : "Listo")
-      )
-    )
-  ),
+
   /*#__PURE__*/React.createElement("button", {
     onClick: enterCustom,
     className: "text-xs font-medium",
@@ -2729,15 +2716,17 @@ function SessionScreen({
   const [exercises, setExercises] = useState(() => draft ? draft.exercises : buildExercisesFromLastSession(routine, lastSession));
   const [startedAt] = useState(() => draft ? draft.startedAt : new Date().toISOString());
   // exIdx = current exercise, setIdx = current set within that exercise
-  // exIdx = current exercise, setIdx = current set being rested after
   const [exIdx, setExIdx] = useState(() => draft?.exIdx ?? 0);
-  const [setIdx, setSetIdx] = useState(() => draft?.setIdx ?? null); // null = no rest active
+  const [restingAfterSet, setRestingAfterSet] = useState(null); // {si, normalCount} for label only
   const [resting, setResting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedId, setSavedId] = useState(null);
   const [resumedFromDraft] = useState(!!draft);
   const [rirSheet, setRirSheet] = useState(null);
   const [showOverview, setShowOverview] = useState(false);
+  const [showImprovement, setShowImprovement] = useState(false);
+
+
 
   const saveDraft = (exs, ei) => {
     try {
@@ -2751,6 +2740,21 @@ function SessionScreen({
 
   const curEx = exercises[exIdx] || exercises[0];
   const isLastEx = exIdx >= exercises.length - 1;
+
+  // Check if last session had any set with RIR >= 2 for the current exercise
+  const improvementInfo = (() => {
+    // GYMBRO_TEST_IMPROVEMENT_MOCK
+    if (!lastSession || !curEx) return null;
+    const lastEx = lastSession.exercises.find(e =>
+      e.name.trim().toLowerCase() === (curEx.name || "").trim().toLowerCase()
+    );
+    if (!lastEx) return null;
+    const setsWithMargin = (lastEx.sets || [])
+      .filter(s => s.type === "normal" && s.rir !== undefined && s.rir >= 2);
+    if (setsWithMargin.length === 0) return null;
+    const maxRir = Math.max(...setsWithMargin.map(s => s.rir));
+    return { count: setsWithMargin.length, maxRir, date: lastSession.date };
+  })();
   const normalSets = (curEx?.sets || []).filter(s => s.type === "normal");
 
   function updateExSets(sets) {
@@ -2765,9 +2769,8 @@ function SessionScreen({
   }
 
   function confirmRir(rir) {
-    const si = rirSheet.si;
+    const { si } = rirSheet;
     setRirSheet(null);
-    // Store RIR on this specific set
     const arr = exercises.slice();
     const ex = { ...arr[exIdx] };
     const sets = ex.sets.slice();
@@ -2778,14 +2781,16 @@ function SessionScreen({
     ex.sets = sets;
     arr[exIdx] = ex;
     setExercises(arr);
-    const isLastSet = si >= normalSets.length - 1;
-    const isVeryLast = isLastSet && isLastEx;
+    // Check if all normal sets now have RIR
+    const currentNormalSets = sets.filter(s => s.type === "normal");
+    const allSetsDone = currentNormalSets.every(s => s.rir !== undefined);
+    const isVeryLast = allSetsDone && isLastEx;
     if (isVeryLast) {
       setSaving(true);
       onSave({ routineId: routine.id, routineName: routine.name, date, exercises: arr, startedAt, endedAt: new Date().toISOString() })
         .then(saved => { setSaving(false); if (saved) { clearDraft(); setSavedId(saved.id); } });
     } else {
-      setSetIdx(si);
+      setRestingAfterSet({ si, normalCount: currentNormalSets.length });
       setResting(true);
       saveDraft(arr, exIdx);
     }
@@ -2793,26 +2798,31 @@ function SessionScreen({
 
   function startNext(restSeconds) {
     setResting(false);
-    // Save rest time on current set
+    setShowImprovement(false);
+    // Save rest time on the set we just rested after
     const arr = exercises.slice();
     const ex = { ...arr[exIdx] };
     const sets = ex.sets.slice();
-    let ni = 0;
-    sets.forEach((s, i) => {
-      if (s.type === "normal") { if (ni === setIdx) sets[i] = { ...s, restSeconds }; ni++; }
-    });
-    ex.sets = sets;
-    arr[exIdx] = ex;
-    setExercises(arr);
-    const isLastSet = setIdx >= normalSets.length - 1;
-    if (isLastSet) {
+    if (restingAfterSet !== null) {
+      let ni = 0;
+      sets.forEach((s, i) => {
+        if (s.type === "normal") { if (ni === restingAfterSet.si) sets[i] = { ...s, restSeconds }; ni++; }
+      });
+      ex.sets = sets;
+      arr[exIdx] = ex;
+      setExercises(arr);
+    }
+    // Check if all sets of this exercise are done
+    const currentNormalSets = sets.filter(s => s.type === "normal");
+    const allSetsDone = currentNormalSets.every(s => s.rir !== undefined);
+    if (allSetsDone) {
       const nextExIdx = exIdx + 1;
       setExIdx(nextExIdx);
       saveDraft(arr, nextExIdx);
     } else {
       saveDraft(arr, exIdx);
     }
-    setSetIdx(null);
+    setRestingAfterSet(null);
   }
   async function handleSave() {
     setSaving(true);
@@ -2834,12 +2844,13 @@ function SessionScreen({
   }
 
   if (resting) {
-    const isLastSet = setIdx >= normalSets.length - 1;
-    const nextLabel = isLastSet
+    const currentNormalSets = (curEx?.sets || []).filter(s => s.type === "normal");
+    const allSetsDone = currentNormalSets.every(s => s.rir !== undefined);
+    const nextLabel = allSetsDone
       ? (isLastEx ? "Guardar sesión" : "Iniciar " + (exercises[exIdx + 1]?.name || ""))
-      : "Serie " + (setIdx + 2) + " de " + normalSets.length;
+      : "Siguiente serie";
     return /*#__PURE__*/React.createElement(RestTimer, {
-      key: exIdx + "-" + setIdx,
+      key: exIdx + "-" + (restingAfterSet?.si ?? 0),
       onNext: startNext,
       nextLabel
     });
@@ -2943,6 +2954,38 @@ function SessionScreen({
       style: { background: "rgba(44,111,255,0.12)" }
     }, /*#__PURE__*/React.createElement(Icon, { name: "check", size: 14, color: C.green }),
       /*#__PURE__*/React.createElement("span", { className: "text-xs font-medium", style: { color: C.text } }, "Sesión recuperada")
+    ),
+    improvementInfo && /*#__PURE__*/React.createElement(React.Fragment, null,
+      /*#__PURE__*/React.createElement("button", {
+        onClick: () => setShowImprovement(v => !v),
+        className: "mb-4 w-full flex items-center justify-center gap-2 rounded-2xl py-3 font-bold",
+        style: {
+          background: showImprovement ? "rgba(52,211,153,0.3)" : "rgba(52,211,153,0.18)",
+          color: "#34D399",
+          border: "1.5px solid rgba(52,211,153,0.5)",
+          fontSize: 15
+        }
+      },
+        /*#__PURE__*/React.createElement("span", null, "✦"),
+        "Podés mejorar este ejercicio"
+      ),
+      showImprovement && /*#__PURE__*/React.createElement("div", {
+        className: "mb-3 rounded-2xl px-4 py-3",
+        style: { background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.2)" }
+      },
+        /*#__PURE__*/React.createElement("p", {
+          className: "text-xs font-bold mb-1",
+          style: { color: "#34D399" }
+        }, "El " + fmtFull(improvementInfo.date)),
+        /*#__PURE__*/React.createElement("p", {
+          className: "text-sm",
+          style: { color: C.text }
+        },
+          improvementInfo.count === 1
+            ? "1 serie con RIR " + improvementInfo.maxRir + " — te sobraban " + improvementInfo.maxRir + " reps. Subí peso o agregá una rep."
+            : improvementInfo.count + " series con RIR ≥ 2 (máx. RIR " + improvementInfo.maxRir + ") — tenés margen para subir."
+        )
+      )
     ),
     /*#__PURE__*/React.createElement(ExercisePlanEditor, {
       sets: curEx.sets,
@@ -3106,7 +3149,7 @@ function SessionEditScreen({
   onDelete
 }) {
   const [date, setDate] = useState(log.date);
-  const [exercises, setExercises] = useState(() => log.exercises.map(cloneExerciseForSession));
+  const [exercises, setExercises] = useState(() => (log.exercises || []).map(cloneExerciseForSession));
   const [strength, setStrength] = useState(typeof log.strength === "number" ? log.strength : null);
   const [endurance, setEndurance] = useState(typeof log.endurance === "number" ? log.endurance : null);
   const [hardest, setHardest] = useState(log.hardestMuscle || null);
@@ -3157,6 +3200,10 @@ function SessionEditScreen({
   async function handleDelete() {
     await onDelete(log.id);
   }
+  if (!log) return /*#__PURE__*/React.createElement("div", { className: "p-8 text-center" },
+    /*#__PURE__*/React.createElement("p", { style: { color: C.textDim } }, "Sesión no encontrada"),
+    /*#__PURE__*/React.createElement("button", { onClick: onCancel, style: { color: C.blue, marginTop: 16 } }, "Volver")
+  );
   return /*#__PURE__*/React.createElement("div", {
     className: "pb-10"
   }, /*#__PURE__*/React.createElement(BackHeader, {
@@ -3514,9 +3561,18 @@ function InsightsScreen({
     const sortedSessions = sessions.slice().sort((a,b) => a.date < b.date ? -1 : 1);
     const avgStrength = sessions.length ? (sessions.reduce((s,l) => s + (l.strength||0), 0) / sessions.length).toFixed(1) : "N/A";
     const avgEndurance = sessions.length ? (sessions.reduce((s,l) => s + (l.endurance||0), 0) / sessions.length).toFixed(1) : "N/A";
-    const lastN = sortedSessions.slice(-5).map(l => 
-      `  - ${l.date}: fuerza ${l.strength}/10, resistencia ${l.endurance}/10${l.hardestMuscle ? ", más costoso: " + l.hardestMuscle : ""}${l.painAreas && l.painAreas.length ? ", dolor en: " + l.painAreas.join("/") : ""}`
-    ).join("\n");
+    const lastN = sortedSessions.slice(-5).map(l => {
+      const exDetails = (l.exercises || []).slice(0, 3).map(ex => {
+        const sets = (ex.sets || []).filter(s => s.type === "normal");
+        const setStr = sets.map((s, i) => {
+          const rir = s.rir !== undefined ? ` RIR${s.rir}` : "";
+          const rest = s.restSeconds ? ` ${s.restSeconds}s descanso` : "";
+          return `s${i+1}:${s.reps}r×${s.weight}kg${rir}${rest}`;
+        }).join(", ");
+        return `${ex.name}(${setStr})`;
+      }).join("; ");
+      return `  - ${l.date}: ${exDetails}${l.painAreas && l.painAreas.length ? " | dolor: " + l.painAreas.join("/") : ""}`;
+    }).join("\n");
     const nutritionDays = {};
     (nutrition || []).forEach(e => { nutritionDays[e.date] = (nutritionDays[e.date]||0) + (Number(e.protein)||0); });
     const nutritionEntries = Object.entries(nutritionDays).sort((a,b) => b[0] > a[0] ? 1 : -1).slice(0, 14);
@@ -5582,7 +5638,7 @@ function MainApp({
         || null;
     })()
   }), tab === "rutinas" && rutinasView?.type === "editSession" && /*#__PURE__*/React.createElement(SessionEditScreen, {
-    log: logs.find(l => l.id === rutinasView.sessionId),
+    log: (logs || []).find(l => l.id === rutinasView.sessionId),
     onCancel: () => setRutinasView(null),
     onSave: finalizeSessionExtras,
     onDelete: deleteSessionAndGoHome
