@@ -763,7 +763,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.7.5";
+const APP_VERSION = "2.7.6";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -3010,7 +3010,7 @@ function SessionScreen({
       const allDone = nextPending === -1;
       const label = allDone
         ? (isLastEx ? "Guardar sesión" : "Siguiente ejercicio: " + (exercises[exIdx + 1]?.name || ""))
-        : "Listo — Serie " + (nextPending + 1) + " de " + normalSets.length;
+        : "Listo — Serie " + (nextPending + 1) + " de " + (curEx?.sets || []).length;
       return /*#__PURE__*/React.createElement("button", {
         onClick: () => {
           if (allDone) {
