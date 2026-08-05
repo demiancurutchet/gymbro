@@ -763,7 +763,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.7.4";
+const APP_VERSION = "2.7.5";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -2799,9 +2799,9 @@ function SessionScreen({
   function startNext(restSeconds) {
     setResting(false);
     setShowImprovement(false);
-    // Save rest time on the set we just rested after
-    const arr = exercises.slice();
-    const ex = { ...arr[exIdx] };
+    // Use snapshot from confirmRir to avoid stale state race condition
+    const base = (restingAfterSet?.snapshotExercises || exercises).slice();
+    const ex = { ...base[exIdx] };
     const sets = ex.sets.slice();
     if (restingAfterSet !== null) {
       let ni = 0;
@@ -2809,18 +2809,16 @@ function SessionScreen({
         if (s.type === "normal") { if (ni === restingAfterSet.si) sets[i] = { ...s, restSeconds }; ni++; }
       });
       ex.sets = sets;
-      arr[exIdx] = ex;
-      setExercises(arr);
+      base[exIdx] = ex;
     }
-    // Check if all sets of this exercise are done
-    const currentNormalSets = sets.filter(s => s.type === "normal");
-    const allSetsDone = currentNormalSets.every(s => s.rir !== undefined);
-    if (allSetsDone) {
-      const nextExIdx = exIdx + 1;
+    setExercises(base);
+    // Use pre-computed allSetsDone from confirmRir — avoids stale state
+    if (restingAfterSet?.allSetsDone && restingAfterSet.nextExIdx != null) {
+      const nextExIdx = restingAfterSet.nextExIdx;
       setExIdx(nextExIdx);
-      saveDraft(arr, nextExIdx);
+      saveDraft(base, nextExIdx);
     } else {
-      saveDraft(arr, exIdx);
+      saveDraft(base, exIdx);
     }
     setRestingAfterSet(null);
   }
