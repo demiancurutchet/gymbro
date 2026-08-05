@@ -763,7 +763,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.7.3";
+const APP_VERSION = "2.7.8";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -2671,8 +2671,8 @@ function RoutineDetail({
 // Session logging
 // ---------------------------------------------------------------------------
 function RestTimer({ onNext, nextLabel }) {
-  const [elapsed, setElapsed] = useState(0);
-  useEffect(() => {
+  const [elapsed, setElapsed] = React.useState(0);
+  React.useEffect(() => {
     const t = setInterval(() => setElapsed(e => e + 1), 1000);
     return () => clearInterval(t);
   }, []);
@@ -2695,14 +2695,7 @@ function RestTimer({ onNext, nextLabel }) {
   );
 }
 
-function SessionScreen({
-  routine,
-  onCancel,
-  onSave,
-  onFinalize,
-  onDone,
-  lastSession
-}) {
+function SessionScreen({ routine, onCancel, onSave, onFinalize, onDone, lastSession }) {
   const DRAFT_KEY = "gymbro_draft_" + routine.id;
   const loadDraft = () => {
     try {
@@ -2712,36 +2705,46 @@ function SessionScreen({
     return null;
   };
   const draft = loadDraft();
-  const [date] = useState(draft ? draft.date : todayISO());
-  const [exercises, setExercises] = useState(() => draft ? draft.exercises : buildExercisesFromLastSession(routine, lastSession));
-  const [startedAt] = useState(() => draft ? draft.startedAt : new Date().toISOString());
-  // exIdx = current exercise, setIdx = current set within that exercise
-  const [exIdx, setExIdx] = useState(() => draft?.exIdx ?? 0);
-  const [restingAfterSet, setRestingAfterSet] = useState(null); // {si, normalCount} for label only
-  const [resting, setResting] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [savedId, setSavedId] = useState(null);
-  const [resumedFromDraft] = useState(!!draft);
-  const [rirSheet, setRirSheet] = useState(null);
-  const [showOverview, setShowOverview] = useState(false);
-  const [showImprovement, setShowImprovement] = useState(false);
+  const [date] = React.useState(draft ? draft.date : todayISO());
+  const [exercises, setExercises] = React.useState(() => draft ? draft.exercises : buildExercisesFromLastSession(routine, lastSession));
+  const [startedAt] = React.useState(() => draft ? draft.startedAt : new Date().toISOString());
+  const [exIdx, setExIdx] = React.useState(() => draft?.exIdx ?? 0);
+  const [serieIdx, setSerieIdx] = React.useState(() => draft?.serieIdx ?? 0); // index across ALL sets (normal + drop)
+  const [phase, setPhase] = React.useState("exercise"); // "exercise" | "rir" | "rest"
+  const [rirValue, setRirValue] = React.useState(null);
+  const [saving, setSaving] = React.useState(false);
+  const [savedId, setSavedId] = React.useState(null);
+  const [showOverview, setShowOverview] = React.useState(false);
+  const [showImprovement, setShowImprovement] = React.useState(false);
+  const [resumedFromDraft] = React.useState(!!draft);
 
-
-
-  const saveDraft = (exs, ei) => {
+  const saveDraft = (exs, ei, si) => {
     try {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({
-        date: todayISO(), exercises: exs, startedAt,
-        exIdx: ei, savedAt: new Date().toISOString()
+        date: todayISO(), exercises: exs, startedAt, exIdx: ei, serieIdx: si,
+        savedAt: new Date().toISOString()
       }));
     } catch(e) {}
   };
   const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch(e) {} };
 
-  const curEx = exercises[exIdx] || exercises[0];
-  const isLastEx = exIdx >= exercises.length - 1;
+  if (savedId) {
+    return /*#__PURE__*/React.createElement(PostSessionWizard, {
+      sessionId: savedId, onFinalize, onDone
+    });
+  }
 
-  // Check if last session had any set with RIR >= 2 for the current exercise
+  const curEx = exercises[exIdx];
+  if (!curEx) return null;
+
+  const allSets = curEx.sets || [];
+  const totalSeries = allSets.length;
+  const curSet = allSets[serieIdx] || allSets[0];
+  const isLastSerie = serieIdx >= totalSeries - 1;
+  const isLastEx = exIdx >= exercises.length - 1;
+  const isVeryLast = isLastSerie && isLastEx;
+
+  // Improvement info
   const improvementInfo = (() => {
     return { count: 2, maxRir: 3, date: "2026-07-28" };
     if (!lastSession || !curEx) return null;
@@ -2755,105 +2758,64 @@ function SessionScreen({
     const maxRir = Math.max(...setsWithMargin.map(s => s.rir));
     return { count: setsWithMargin.length, maxRir, date: lastSession.date };
   })();
-  const normalSets = (curEx?.sets || []).filter(s => s.type === "normal");
 
   function updateExSets(sets) {
     const arr = exercises.slice();
     arr[exIdx] = { ...arr[exIdx], sets };
     setExercises(arr);
-    saveDraft(arr, exIdx);
+    saveDraft(arr, exIdx, serieIdx);
   }
 
-  function markSetDone(si) {
-    setRirSheet({ exName: curEx?.name || "", setNum: si + 1, si });
+  function handleListo() {
+    setPhase("rir");
   }
 
-  function confirmRir(rir) {
-    const { si } = rirSheet;
-    setRirSheet(null);
+  function handleRir(rir) {
+    // Save RIR on current set
     const arr = exercises.slice();
     const ex = { ...arr[exIdx] };
     const sets = ex.sets.slice();
-    let ni = 0;
-    sets.forEach((s, i) => {
-      if (s.type === "normal") { if (ni === si) sets[i] = { ...s, rir }; ni++; }
-    });
+    sets[serieIdx] = { ...sets[serieIdx], rir };
     ex.sets = sets;
     arr[exIdx] = ex;
     setExercises(arr);
-    // Check if all normal sets now have RIR
-    const currentNormalSets = sets.filter(s => s.type === "normal");
-    const allSetsDone = currentNormalSets.every(s => s.rir !== undefined);
-    const isVeryLast = allSetsDone && isLastEx;
+    saveDraft(arr, exIdx, serieIdx);
+    setRirValue(rir);
+
     if (isVeryLast) {
+      // Last serie of last exercise — save session
       setSaving(true);
       onSave({ routineId: routine.id, routineName: routine.name, date, exercises: arr, startedAt, endedAt: new Date().toISOString() })
         .then(saved => { setSaving(false); if (saved) { clearDraft(); setSavedId(saved.id); } });
     } else {
-      setRestingAfterSet({ si, normalCount: currentNormalSets.length });
-      setResting(true);
-      saveDraft(arr, exIdx);
+      setPhase("rest");
     }
   }
 
-  function startNext(restSeconds) {
-    setResting(false);
-    setShowImprovement(false);
-    // Save rest time on the set we just rested after
+  function handleRest(restSeconds) {
+    // Save rest time on current set
     const arr = exercises.slice();
     const ex = { ...arr[exIdx] };
     const sets = ex.sets.slice();
-    if (restingAfterSet !== null) {
-      let ni = 0;
-      sets.forEach((s, i) => {
-        if (s.type === "normal") { if (ni === restingAfterSet.si) sets[i] = { ...s, restSeconds }; ni++; }
-      });
-      ex.sets = sets;
-      arr[exIdx] = ex;
-      setExercises(arr);
-    }
-    // Check if all sets of this exercise are done
-    const currentNormalSets = sets.filter(s => s.type === "normal");
-    const allSetsDone = currentNormalSets.every(s => s.rir !== undefined);
-    if (allSetsDone) {
+    sets[serieIdx] = { ...sets[serieIdx], restSeconds };
+    ex.sets = sets;
+    arr[exIdx] = ex;
+    setExercises(arr);
+
+    if (isLastSerie) {
+      // Move to next exercise
       const nextExIdx = exIdx + 1;
       setExIdx(nextExIdx);
-      saveDraft(arr, nextExIdx);
+      setSerieIdx(0);
+      setShowImprovement(false);
+      saveDraft(arr, nextExIdx, 0);
     } else {
-      saveDraft(arr, exIdx);
+      // Move to next serie in same exercise
+      setSerieIdx(serieIdx + 1);
+      saveDraft(arr, exIdx, serieIdx + 1);
     }
-    setRestingAfterSet(null);
-  }
-  async function handleSave() {
-    setSaving(true);
-    const saved = await onSave({
-      routineId: routine.id,
-      routineName: routine.name,
-      date,
-      exercises,
-      startedAt,
-      endedAt: new Date().toISOString()
-    });
-    setSaving(false);
-    if (saved) { clearDraft(); setSavedId(saved.id); }
-  }
-  if (savedId) {
-    return /*#__PURE__*/React.createElement(PostSessionWizard, {
-      sessionId: savedId, onFinalize: onFinalize, onDone: onDone
-    });
-  }
-
-  if (resting) {
-    const currentNormalSets = (curEx?.sets || []).filter(s => s.type === "normal");
-    const allSetsDone = currentNormalSets.every(s => s.rir !== undefined);
-    const nextLabel = allSetsDone
-      ? (isLastEx ? "Guardar sesión" : "Iniciar " + (exercises[exIdx + 1]?.name || ""))
-      : "Siguiente serie";
-    return /*#__PURE__*/React.createElement(RestTimer, {
-      key: exIdx + "-" + (restingAfterSet?.si ?? 0),
-      onNext: startNext,
-      nextLabel
-    });
+    setPhase("exercise");
+    setRirValue(null);
   }
 
   const RIR_OPTIONS = [
@@ -2864,173 +2826,136 @@ function SessionScreen({
     { label: "✗ Fallé", sub: "no llegué a las reps", rir: -1 },
   ];
 
-  // Which normal sets are already "done" (have RIR assigned)
-  const doneSetIdxs = new Set();
-  let ni = 0;
-  (curEx?.sets || []).forEach(s => {
-    if (s.type === "normal") { if (s.rir !== undefined) doneSetIdxs.add(ni); ni++; }
-  });
+  // Rest phase
+  if (phase === "rest") {
+    const nextLabel = isLastSerie
+      ? (isLastEx ? "Guardar sesión" : "Iniciar " + (exercises[exIdx + 1]?.name || ""))
+      : "Serie " + (serieIdx + 2) + " de " + totalSeries;
+    return /*#__PURE__*/React.createElement(RestTimer, {
+      key: exIdx + "-" + serieIdx,
+      onNext: handleRest,
+      nextLabel
+    });
+  }
 
-  return /*#__PURE__*/React.createElement("div", { className: "pb-10" },
-  rirSheet && /*#__PURE__*/React.createElement(React.Fragment, null,
-    /*#__PURE__*/React.createElement("div", {
-      onClick: () => confirmRir(null),
-      style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 40 }
-    }),
-    /*#__PURE__*/React.createElement("div", {
-      style: { position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50,
-        background: "#1C1C1E", borderRadius: "24px 24px 0 0", padding: "16px 20px 48px" }
-    },
+  // RIR phase
+  if (phase === "rir") {
+    return /*#__PURE__*/React.createElement("div", { className: "flex flex-col items-center justify-center px-6", style: { minHeight: "100vh" } },
+      /*#__PURE__*/React.createElement("div", { style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 40 } }),
       /*#__PURE__*/React.createElement("div", {
-        style: { width: 40, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.2)", margin: "0 auto 20px" }
-      }),
-      /*#__PURE__*/React.createElement("p", { style: { color: C.text, fontSize: 22, fontWeight: "700", marginBottom: 2 } }, rirSheet.exName),
-      /*#__PURE__*/React.createElement("p", { style: { color: C.textDim, fontSize: 14, marginBottom: 16 } }, "Serie " + rirSheet.setNum),
-      /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
-        RIR_OPTIONS.map(opt =>
-          /*#__PURE__*/React.createElement("button", {
-            key: opt.rir, onClick: () => confirmRir(opt.rir),
-            style: {
-              background: opt.rir === -1 ? "rgba(255,69,58,0.15)" : "rgba(255,255,255,0.06)",
-              border: "none", borderRadius: 16, padding: "18px 20px",
-              display: "flex", justifyContent: "space-between", alignItems: "center",
-              cursor: "pointer", width: "100%"
-            }
+        style: { position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50, background: "#1C1C1E", borderRadius: "24px 24px 0 0", padding: "16px 20px 48px" }
+      },
+        /*#__PURE__*/React.createElement("div", { style: { width: 40, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.2)", margin: "0 auto 20px" } }),
+        /*#__PURE__*/React.createElement("p", { style: { color: C.text, fontSize: 22, fontWeight: "700", marginBottom: 2 } }, curEx.name),
+        /*#__PURE__*/React.createElement("p", { style: { color: C.textDim, fontSize: 14, marginBottom: 16 } }, "Serie " + (serieIdx + 1) + " de " + totalSeries),
+        /*#__PURE__*/React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 10 } },
+          RIR_OPTIONS.map(opt =>
+            /*#__PURE__*/React.createElement("button", {
+              key: opt.rir,
+              onClick: () => handleRir(opt.rir),
+              style: {
+                background: opt.rir === -1 ? "rgba(255,69,58,0.15)" : "rgba(255,255,255,0.06)",
+                border: "none", borderRadius: 16, padding: "18px 20px",
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                cursor: "pointer", width: "100%"
+              }
+            },
+              /*#__PURE__*/React.createElement("span", { style: { color: opt.rir === -1 ? C.red : C.text, fontSize: 20, fontWeight: "700" } }, opt.label),
+              /*#__PURE__*/React.createElement("span", { style: { color: C.textDim, fontSize: 15 } }, opt.sub)
+            )
+          )
+        ),
+        /*#__PURE__*/React.createElement("button", {
+          onClick: () => setPhase("exercise"),
+          style: { color: C.textDim, fontSize: 14, marginTop: 16, display: "block", textAlign: "center", width: "100%" }
+        }, "Saltar")
+      )
+    );
+  }
+
+  // Exercise phase
+  return /*#__PURE__*/React.createElement("div", { className: "pb-10" },
+    showOverview && /*#__PURE__*/React.createElement(React.Fragment, null,
+      /*#__PURE__*/React.createElement("div", { onClick: () => setShowOverview(false), style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 40 } }),
+      /*#__PURE__*/React.createElement("div", {
+        style: { position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50, background: "#1C1C1E", borderRadius: "24px 24px 0 0", padding: "16px 20px 48px", maxHeight: "70vh", overflowY: "auto" }
+      },
+        /*#__PURE__*/React.createElement("div", { style: { width: 40, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.2)", margin: "0 auto 20px" } }),
+        /*#__PURE__*/React.createElement("p", { style: { color: C.text, fontSize: 18, fontWeight: "700", marginBottom: 16 } }, routine.name),
+        exercises.map((e, i) =>
+          /*#__PURE__*/React.createElement("div", { key: e.id,
+            style: { padding: "12px 0", borderBottom: i < exercises.length - 1 ? "1px solid rgba(255,255,255,0.08)" : "none", opacity: i < exIdx ? 0.5 : 1 }
           },
-            /*#__PURE__*/React.createElement("span", { style: { color: opt.rir === -1 ? C.red : C.text, fontSize: 20, fontWeight: "700" } }, opt.label),
-            /*#__PURE__*/React.createElement("span", { style: { color: C.textDim, fontSize: 15 } }, opt.sub)
+            /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
+              /*#__PURE__*/React.createElement("span", {
+                style: { width: 26, height: 26, borderRadius: 13, flexShrink: 0, background: i < exIdx ? C.green : i === exIdx ? C.blue : "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: "700", color: "#fff" }
+              }, i < exIdx ? "✓" : i + 1),
+              /*#__PURE__*/React.createElement("span", { style: { color: i === exIdx ? C.text : C.textDim, fontSize: 16, fontWeight: i === exIdx ? "700" : "400" } }, e.name)
+            )
           )
         )
       )
-    )
-  ),
-  showOverview && /*#__PURE__*/React.createElement(React.Fragment, null,
-    /*#__PURE__*/React.createElement("div", {
-      onClick: () => setShowOverview(false),
-      style: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 40 }
-    }),
-    /*#__PURE__*/React.createElement("div", {
-      style: { position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 50,
-        background: "#1C1C1E", borderRadius: "24px 24px 0 0",
-        padding: "16px 20px 48px", maxHeight: "70vh", overflowY: "auto" }
-    },
-      /*#__PURE__*/React.createElement("div", { style: { width: 40, height: 4, borderRadius: 2, background: "rgba(255,255,255,0.2)", margin: "0 auto 20px" } }),
-      /*#__PURE__*/React.createElement("p", { style: { color: C.text, fontSize: 18, fontWeight: "700", marginBottom: 16 } }, routine.name),
-      exercises.map((e, i) =>
-        /*#__PURE__*/React.createElement("div", { key: e.id,
-          style: { padding: "12px 0", borderBottom: i < exercises.length - 1 ? "1px solid rgba(255,255,255,0.08)" : "none", opacity: i < exIdx ? 0.5 : 1 }
-        },
-          /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 10 } },
-            /*#__PURE__*/React.createElement("span", {
-              style: { width: 26, height: 26, borderRadius: 13, flexShrink: 0,
-                background: i < exIdx ? C.green : i === exIdx ? C.blue : "rgba(255,255,255,0.1)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 12, fontWeight: "700", color: "#fff" }
-            }, i < exIdx ? "✓" : i + 1),
-            /*#__PURE__*/React.createElement("span", {
-              style: { color: i === exIdx ? C.text : C.textDim, fontSize: 16, fontWeight: i === exIdx ? "700" : "400" }
-            }, e.name)
-          )
-        )
-      )
-    )
-  ),
-  /*#__PURE__*/React.createElement(BackHeader, {
-    onBack: onCancel,
-    title: (exIdx + 1) + "/" + exercises.length + " · " + curEx.name,
-    right: /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14 } },
-      /*#__PURE__*/React.createElement("button", {
-        onClick: () => setShowOverview(true),
-        style: { color: C.textDim, fontSize: 13 }
-      }, "Ver rutina"),
-      /*#__PURE__*/React.createElement("button", { onClick: onCancel },
-        /*#__PURE__*/React.createElement(Icon, { name: "x", size: 20, color: C.textDim })
-      )
-    )
-  }),
-  /*#__PURE__*/React.createElement("div", { className: "px-4 pt-5" },
-    resumedFromDraft && /*#__PURE__*/React.createElement("div", {
-      className: "flex items-center gap-2 rounded-xl px-3 py-2 mb-3",
-      style: { background: "rgba(44,111,255,0.12)" }
-    }, /*#__PURE__*/React.createElement(Icon, { name: "check", size: 14, color: C.green }),
-      /*#__PURE__*/React.createElement("span", { className: "text-xs font-medium", style: { color: C.text } }, "Sesión recuperada")
     ),
-    improvementInfo && /*#__PURE__*/React.createElement(React.Fragment, null,
-      /*#__PURE__*/React.createElement("button", {
-        onClick: () => setShowImprovement(v => !v),
-        className: "mb-4 w-full flex items-center justify-center gap-2 rounded-2xl py-3 font-bold",
-        style: {
-          background: showImprovement ? "rgba(52,211,153,0.3)" : "rgba(52,211,153,0.18)",
-          color: "#34D399",
-          border: "1.5px solid rgba(52,211,153,0.5)",
-          fontSize: 15
-        }
-      },
-        /*#__PURE__*/React.createElement("span", null, "✦"),
-        "Podés mejorar este ejercicio"
+    /*#__PURE__*/React.createElement(BackHeader, {
+      onBack: onCancel,
+      title: (exIdx + 1) + "/" + exercises.length + " · " + curEx.name,
+      right: /*#__PURE__*/React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14 } },
+        /*#__PURE__*/React.createElement("button", { onClick: () => setShowOverview(true), style: { color: C.textDim, fontSize: 13 } }, "Ver rutina"),
+        /*#__PURE__*/React.createElement("button", { onClick: onCancel }, /*#__PURE__*/React.createElement(Icon, { name: "x", size: 20, color: C.textDim }))
+      )
+    }),
+    /*#__PURE__*/React.createElement("div", { className: "px-4 pt-5" },
+      resumedFromDraft && /*#__PURE__*/React.createElement("div", {
+        className: "flex items-center gap-2 rounded-xl px-3 py-2 mb-3",
+        style: { background: "rgba(44,111,255,0.12)" }
+      }, /*#__PURE__*/React.createElement(Icon, { name: "check", size: 14, color: C.green }),
+        /*#__PURE__*/React.createElement("span", { className: "text-xs font-medium", style: { color: C.text } }, "Sesión recuperada")
       ),
-      showImprovement && /*#__PURE__*/React.createElement("div", {
-        className: "mb-3 rounded-2xl px-4 py-3",
-        style: { background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.2)" }
-      },
-        /*#__PURE__*/React.createElement("p", {
-          className: "text-xs font-bold mb-1",
-          style: { color: "#34D399" }
-        }, "El " + fmtFull(improvementInfo.date)),
-        /*#__PURE__*/React.createElement("p", {
-          className: "text-sm",
-          style: { color: C.text }
+      improvementInfo && /*#__PURE__*/React.createElement(React.Fragment, null,
+        /*#__PURE__*/React.createElement("button", {
+          onClick: () => setShowImprovement(v => !v),
+          className: "mb-4 w-full flex items-center justify-center gap-2 rounded-2xl py-3 font-bold",
+          style: { background: showImprovement ? "rgba(52,211,153,0.3)" : "rgba(52,211,153,0.18)", color: "#34D399", border: "1.5px solid rgba(52,211,153,0.5)", fontSize: 15 }
+        }, "✦ Podés mejorar este ejercicio"),
+        showImprovement && /*#__PURE__*/React.createElement("div", {
+          className: "mb-3 rounded-2xl px-4 py-3",
+          style: { background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.2)" }
         },
-          improvementInfo.count === 1
-            ? "1 serie con RIR " + improvementInfo.maxRir + " — te sobraban " + improvementInfo.maxRir + " reps. Subí peso o agregá una rep."
-            : improvementInfo.count + " series con RIR ≥ 2 (máx. RIR " + improvementInfo.maxRir + ") — tenés margen para subir."
+          /*#__PURE__*/React.createElement("p", { className: "text-xs font-bold mb-1", style: { color: "#34D399" } }, "El " + fmtFull(improvementInfo.date)),
+          /*#__PURE__*/React.createElement("p", { className: "text-sm", style: { color: C.text } },
+            improvementInfo.count === 1
+              ? "1 serie con RIR " + improvementInfo.maxRir + " — subí peso o agregá una rep."
+              : improvementInfo.count + " series con RIR ≥ 2 (máx. " + improvementInfo.maxRir + ") — tenés margen para subir."
+          )
         )
-      )
-    ),
-    /*#__PURE__*/React.createElement(ExercisePlanEditor, {
-      sets: curEx.sets,
-      onChange: updateExSets,
-      bodyweight: curEx.bodyweight,
-      onToggleBodyweight: v => {
-        const arr = exercises.slice();
-        arr[exIdx] = { ...arr[exIdx], bodyweight: v };
-        setExercises(arr);
-      },
-      doneSetIdxs,
-      onSetDone: markSetDone
-    }),
-    (() => {
-      // Find the first undone normal set
-      let nextPending = -1;
-      let ni = 0;
-      (curEx?.sets || []).forEach(s => {
-        if (s.type === "normal") {
-          if (nextPending === -1 && !doneSetIdxs.has(ni)) nextPending = ni;
-          ni++;
+      ),
+      /*#__PURE__*/React.createElement(ExercisePlanEditor, {
+        sets: curEx.sets,
+        onChange: updateExSets,
+        bodyweight: curEx.bodyweight,
+        onToggleBodyweight: v => {
+          const arr = exercises.slice();
+          arr[exIdx] = { ...arr[exIdx], bodyweight: v };
+          setExercises(arr);
         }
-      });
-      const allDone = nextPending === -1;
-      const label = allDone
-        ? (isLastEx ? "Guardar sesión" : "Siguiente ejercicio: " + (exercises[exIdx + 1]?.name || ""))
-        : "Listo — Serie " + (nextPending + 1) + " de " + normalSets.length;
-      return /*#__PURE__*/React.createElement("button", {
-        onClick: () => {
-          if (allDone) {
-            if (!isLastEx) {
-              // Manually advance to next exercise (edge case - all sets done without rest)
-              const nextExIdx = exIdx + 1;
-              setExIdx(nextExIdx);
-              saveDraft(exercises, nextExIdx);
-            }
-          } else {
-            markSetDone(nextPending);
-          }
-        },
+      }),
+      /*#__PURE__*/React.createElement("button", {
+        onClick: handleListo,
         className: "mt-6 w-full flex items-center justify-center gap-2 rounded-2xl py-5 text-xl font-bold",
         style: { background: C.green, color: "#fff", opacity: saving ? 0.7 : 1 }
-      }, /*#__PURE__*/React.createElement(Icon, { name: "check", size: 22, color: "#fff" }), label);
-    })()
-  ));
+      }, /*#__PURE__*/React.createElement(Icon, { name: "check", size: 22, color: "#fff" }),
+        saving ? "Guardando..." : "Listo — Serie " + (serieIdx + 1) + " de " + totalSeries
+      ),
+      !isLastSerie && /*#__PURE__*/React.createElement("p", {
+        className: "text-center mt-3 text-sm",
+        style: { color: C.textDim }
+      }, "Después: Serie " + (serieIdx + 2) + " de " + totalSeries),
+      isLastSerie && !isLastEx && /*#__PURE__*/React.createElement("p", {
+        className: "text-center mt-3 text-sm",
+        style: { color: C.textDim }
+      }, "Siguiente ejercicio: ", /*#__PURE__*/React.createElement("span", { style: { color: C.text, fontWeight: "600" } }, exercises[exIdx + 1]?.name))
+    )
+  );
 }
 
 
