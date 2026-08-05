@@ -763,7 +763,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.7.6";
+const APP_VERSION = "2.7.7";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -2774,16 +2774,23 @@ function SessionScreen({
     const arr = exercises.slice();
     const ex = { ...arr[exIdx] };
     const sets = ex.sets.slice();
-    let ni = 0;
-    sets.forEach((s, i) => {
-      if (s.type === "normal") { if (ni === si) sets[i] = { ...s, rir }; ni++; }
-    });
+    // si === -1 means "exercise done after drop set" — store RIR on the drop set
+    if (si >= 0) {
+      let ni = 0;
+      sets.forEach((s, i) => {
+        if (s.type === "normal") { if (ni === si) sets[i] = { ...s, rir }; ni++; }
+      });
+    } else {
+      // si === -1: drop set completion — store RIR on the last set
+      const lastIdx = sets.length - 1;
+      if (lastIdx >= 0) sets[lastIdx] = { ...sets[lastIdx], rir };
+    }
     ex.sets = sets;
     arr[exIdx] = ex;
     setExercises(arr);
-    // Check if all normal sets now have RIR
+    // Check if all normal sets now have RIR (or si was -1 meaning all done)
     const currentNormalSets = sets.filter(s => s.type === "normal");
-    const allSetsDone = currentNormalSets.every(s => s.rir !== undefined);
+    const allSetsDone = si === -1 || currentNormalSets.every(s => s.rir !== undefined);
     const isVeryLast = allSetsDone && isLastEx;
     if (isVeryLast) {
       setSaving(true);
@@ -3014,8 +3021,14 @@ function SessionScreen({
       return /*#__PURE__*/React.createElement("button", {
         onClick: () => {
           if (allDone) {
-            if (!isLastEx) {
-              // Manually advance to next exercise (edge case - all sets done without rest)
+            // Check if last set is a drop set — still needs RIR before advancing
+            const sets = curEx?.sets || [];
+            const lastSet = sets[sets.length - 1];
+            const hasDropLast = lastSet?.type === "drop";
+            if (hasDropLast) {
+              // Show RIR for the drop set (use si=-1 to signal "exercise done after drop")
+              setRirSheet({ exName: curEx?.name || "", setNum: sets.length, si: -1 });
+            } else if (!isLastEx) {
               const nextExIdx = exIdx + 1;
               setExIdx(nextExIdx);
               saveDraft(exercises, nextExIdx);
