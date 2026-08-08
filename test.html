@@ -763,7 +763,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.7.8";
+const APP_VERSION = "2.8.1";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1228,93 +1228,79 @@ function MiniLineChart({
     }
   }, /*#__PURE__*/React.createElement("span", null, fmtShort(points[0].date)), /*#__PURE__*/React.createElement("span", null, fmtShort(points[points.length - 1].date))));
 }
-function DualLineChart({
-  points
-}) {
-  const w = 600,
-    h = 180,
-    padL = 10,
-    padR = 10,
-    padT = 14,
-    padB = 14;
+// Compute volume and intensity from a session's exercises
+function sessionVolume(log) {
+  let vol = 0;
+  (log.exercises || []).forEach(ex => {
+    (ex.sets || []).forEach(s => {
+      if (s.type === "normal" && s.reps && s.weight) vol += s.reps * s.weight;
+      if (s.type === "drop") (s.drops || []).forEach(d => { if (d.reps && d.weight) vol += d.reps * d.weight; });
+    });
+  });
+  return Math.round(vol);
+}
+function sessionIntensity(log) {
+  // Average Epley 1RM estimate: weight * (1 + reps/30)
+  let sum = 0, count = 0;
+  (log.exercises || []).forEach(ex => {
+    (ex.sets || []).forEach(s => {
+      if (s.type === "normal" && s.reps && s.weight) {
+        sum += s.weight * (1 + s.reps / 30);
+        count++;
+      }
+    });
+  });
+  return count ? Math.round(sum / count) : 0;
+}
+
+function DualLineChart({ points }) {
+  const w = 600, h = 190, padL = 10, padR = 10, padT = 16, padB = 16;
   const stepX = points.length > 1 ? (w - padL - padR) / (points.length - 1) : 0;
-  const STRENGTH_COLOR = "#2C6FFF";
-  const ENDURANCE_COLOR = "#FF9F0A";
-  function coordsFor(key) {
-    return points.map((p, i) => ({
+  const VOL_COLOR = "#2C6FFF";
+  const INT_COLOR = "#34D399";
+
+  // Compute vol+intensity per point (session)
+  const enriched = points.map(p => ({
+    ...p,
+    vol: sessionVolume(p),
+    intensity: sessionIntensity(p)
+  }));
+
+  const vols = enriched.map(p => p.vol);
+  const ints = enriched.map(p => p.intensity);
+  const maxVol = Math.max(...vols, 1);
+  const maxInt = Math.max(...ints, 1);
+
+  function coordsFor(values, maxVal) {
+    return values.map((v, i) => ({
       x: padL + i * stepX,
-      y: padT + (h - padT - padB) * (1 - (p[key] || 0) / 10)
+      y: padT + (h - padT - padB) * (1 - v / maxVal)
     }));
   }
-  const sCoords = coordsFor("strength");
-  const eCoords = coordsFor("endurance");
+  const vCoords = coordsFor(vols, maxVol);
+  const iCoords = coordsFor(ints, maxInt);
   const pathFor = coords => coords.map((c, i) => (i === 0 ? "M" : "L") + c.x.toFixed(1) + "," + c.y.toFixed(1)).join(" ");
-  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("svg", {
-    viewBox: `0 0 ${w} ${h}`,
-    width: "100%",
-    height: h
-  }, /*#__PURE__*/React.createElement("path", {
-    d: pathFor(sCoords),
-    fill: "none",
-    stroke: STRENGTH_COLOR,
-    strokeWidth: "3",
-    strokeLinecap: "round",
-    strokeLinejoin: "round"
-  }), /*#__PURE__*/React.createElement("path", {
-    d: pathFor(eCoords),
-    fill: "none",
-    stroke: ENDURANCE_COLOR,
-    strokeWidth: "3",
-    strokeLinecap: "round",
-    strokeLinejoin: "round",
-    strokeDasharray: "8 4"
-  }), sCoords.map((c, i) => /*#__PURE__*/React.createElement("circle", {
-    key: "s" + i,
-    cx: c.x,
-    cy: c.y,
-    r: "4",
-    fill: STRENGTH_COLOR
-  })), eCoords.map((c, i) => /*#__PURE__*/React.createElement("circle", {
-    key: "e" + i,
-    cx: c.x,
-    cy: c.y,
-    r: "4",
-    fill: ENDURANCE_COLOR
-  }))), /*#__PURE__*/React.createElement("div", {
-    className: "flex items-center gap-4 px-1 mt-1.5 mb-1"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "flex items-center gap-1.5 text-xs",
-    style: {
-      color: C.textDim
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      width: 16,
-      height: 3,
-      background: STRENGTH_COLOR,
-      display: "inline-block",
-      borderRadius: 2
-    }
-  }), " Fuerza"), /*#__PURE__*/React.createElement("span", {
-    className: "flex items-center gap-1.5 text-xs",
-    style: {
-      color: C.textDim
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      width: 16,
-      height: 3,
-      background: ENDURANCE_COLOR,
-      display: "inline-block",
-      borderRadius: 2,
-      opacity: 0.9
-    }
-  }), " Resistencia")), /*#__PURE__*/React.createElement("div", {
-    className: "flex justify-between text-xs px-1",
-    style: {
-      color: C.textDim2
-    }
-  }, /*#__PURE__*/React.createElement("span", null, fmtShort(points[0].date)), /*#__PURE__*/React.createElement("span", null, fmtShort(points[points.length - 1].date))));
+
+  return /*#__PURE__*/React.createElement("div", null,
+    /*#__PURE__*/React.createElement("svg", { viewBox: `0 0 ${w} ${h}`, width: "100%", height: h },
+      /*#__PURE__*/React.createElement("path", { d: pathFor(vCoords), fill: "none", stroke: VOL_COLOR, strokeWidth: "3", strokeLinecap: "round", strokeLinejoin: "round" }),
+      /*#__PURE__*/React.createElement("path", { d: pathFor(iCoords), fill: "none", stroke: INT_COLOR, strokeWidth: "3", strokeLinecap: "round", strokeLinejoin: "round", strokeDasharray: "8 4" }),
+      vCoords.map((c, i) => /*#__PURE__*/React.createElement("circle", { key: "v"+i, cx: c.x, cy: c.y, r: "4", fill: VOL_COLOR })),
+      iCoords.map((c, i) => /*#__PURE__*/React.createElement("circle", { key: "i"+i, cx: c.x, cy: c.y, r: "4", fill: INT_COLOR }))
+    ),
+    /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-4 px-1 mt-1.5 mb-1" },
+      /*#__PURE__*/React.createElement("span", { className: "flex items-center gap-1.5 text-xs", style: { color: C.textDim } },
+        /*#__PURE__*/React.createElement("span", { style: { width: 16, height: 3, background: VOL_COLOR, display: "inline-block", borderRadius: 2 } }),
+        "Volumen (kg×reps)"),
+      /*#__PURE__*/React.createElement("span", { className: "flex items-center gap-1.5 text-xs", style: { color: C.textDim } },
+        /*#__PURE__*/React.createElement("span", { style: { width: 16, height: 3, background: INT_COLOR, display: "inline-block", borderRadius: 2 } }),
+        "Intensidad (1RM aprox.)")
+    ),
+    /*#__PURE__*/React.createElement("div", { className: "flex justify-between text-xs px-1", style: { color: C.textDim2 } },
+      /*#__PURE__*/React.createElement("span", null, fmtShort(points[0].date)),
+      /*#__PURE__*/React.createElement("span", null, fmtShort(points[points.length - 1].date))
+    )
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1341,11 +1327,15 @@ function setsToGroups(sets) {
   });
   return groups;
 }
-function groupsToSets(groups) {
+function groupsToSets(groups, existingSets) {
   const result = [];
+  let existingIdx = 0;
+  const normals = (existingSets || []).filter(s => s.type === "normal");
   groups.forEach(g => {
     for (let i = 0; i < Math.max(1, g.count); i++) {
-      result.push(makeNormalSet(g.reps, g.weight));
+      // Reuse existing set ID if available to preserve identity
+      const existing = normals[existingIdx++];
+      result.push({ ...makeNormalSet(g.reps, g.weight), id: existing ? existing.id : uid() });
     }
   });
   return result;
@@ -1377,12 +1367,12 @@ function ExercisePlanEditor({
   }
   function exitCustom() {
     setCustom(false);
-    const normalExpanded = groupsToSets(groups);
+    const normalExpanded = groupsToSets(groups, sets);
     onChange([...normalExpanded, ...dropSets]);
   }
   function updateGroups(next) {
     setGroups(next);
-    onChange([...groupsToSets(next), ...dropSets]);
+    onChange([...groupsToSets(next, sets), ...dropSets]);
   }
   function addGroup() {
     updateGroups([...groups, {
@@ -2671,9 +2661,12 @@ function RoutineDetail({
 // Session logging
 // ---------------------------------------------------------------------------
 function RestTimer({ onNext, nextLabel }) {
+  const startRef = React.useRef(Date.now());
   const [elapsed, setElapsed] = React.useState(0);
   React.useEffect(() => {
-    const t = setInterval(() => setElapsed(e => e + 1), 1000);
+    const t = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+    }, 500);
     return () => clearInterval(t);
   }, []);
   const mins = Math.floor(elapsed / 60);
@@ -2763,7 +2756,11 @@ function SessionScreen({ routine, onCancel, onSave, onFinalize, onDone, lastSess
     const arr = exercises.slice();
     arr[exIdx] = { ...arr[exIdx], sets };
     setExercises(arr);
-    saveDraft(arr, exIdx, serieIdx);
+    // Clamp serieIdx if user reduced number of sets
+    const newTotal = sets.length;
+    const clampedIdx = Math.min(serieIdx, Math.max(0, newTotal - 1));
+    if (clampedIdx !== serieIdx) setSerieIdx(clampedIdx);
+    saveDraft(arr, exIdx, clampedIdx);
   }
 
   function handleListo() {
@@ -3499,20 +3496,30 @@ function InsightsScreen({
       return `  - ${l.date}: ${exDetails}${l.painAreas && l.painAreas.length ? " | dolor: " + l.painAreas.join("/") : ""}`;
     }).join("\n");
     const nutritionDays = {};
-    (nutrition || []).forEach(e => { nutritionDays[e.date] = (nutritionDays[e.date]||0) + (Number(e.protein)||0); });
+    (nutrition || []).forEach(e => {
+      if (!nutritionDays[e.date]) nutritionDays[e.date] = { protein: 0, carbs: 0, foods: [] };
+      nutritionDays[e.date].protein += Number(e.protein) || 0;
+      nutritionDays[e.date].carbs += Number(e.carbs) || 0;
+      if (e.name) nutritionDays[e.date].foods.push(e.name);
+    });
     const nutritionEntries = Object.entries(nutritionDays).sort((a,b) => b[0] > a[0] ? 1 : -1).slice(0, 14);
-    const avgProtein = nutritionEntries.length ? Math.round(nutritionEntries.reduce((s,[,v]) => s+v, 0) / nutritionEntries.length) : 0;
+    const avgProtein = nutritionEntries.length ? Math.round(nutritionEntries.reduce((s,[,v]) => s + v.protein, 0) / nutritionEntries.length) : 0;
+    const avgCarbs = nutritionEntries.length ? Math.round(nutritionEntries.reduce((s,[,v]) => s + v.carbs, 0) / nutritionEntries.length) : 0;
+    const lastNutrition = nutritionEntries.slice(0, 5).map(([date, v]) =>
+      `  - ${date}: ${Math.round(v.protein)}g prot, ${Math.round(v.carbs)}g carbos | ${[...new Set(v.foods)].slice(0,4).join(", ")}`
+    ).join("\n");
     return [
       "ENTRENAMIENTO:",
-      "Total de sesiones puntuadas: " + sessions.length,
-      "Fuerza promedio: " + avgStrength + "/10",
-      "Resistencia promedio: " + avgEndurance + "/10",
+      "Total de sesiones: " + sessions.length,
       "Últimas 5 sesiones:",
       lastN || "  Sin datos",
       "",
-      "NUTRICIÓN (últimos 14 días registrados):",
-      "Proteína promedio diaria: " + avgProtein + "g (meta: " + proteinGoal + "g)",
-      "Días con datos: " + nutritionEntries.length
+      "NUTRICIÓN (últimos 14 días):",
+      "Proteína promedio: " + avgProtein + "g/día (meta: " + proteinGoal + "g)",
+      "Carbos promedio: " + avgCarbs + "g/día",
+      "Días con datos: " + nutritionEntries.length,
+      "Detalle últimos 5 días:",
+      lastNutrition || "  Sin datos"
     ].join("\n");
   }
 
@@ -3949,6 +3956,50 @@ function ProteinCalendar({ nutrition, goals, onBack }) {
 }
 
 
+function ExerciseChart({ points }) {
+  const w = 600, h = 180, padL = 10, padR = 10, padT = 14, padB = 14;
+  const stepX = points.length > 1 ? (w - padL - padR) / (points.length - 1) : 0;
+  const WEIGHT_COLOR = "#2C6FFF";
+  const REPS_COLOR = "#34D399";
+
+  const weights = points.map(p => p.weight || 0);
+  const reps = points.map(p => p.reps || 0);
+  const maxW = Math.max(...weights, 1);
+  const maxR = Math.max(...reps, 1);
+
+  function coordsFor(values, maxVal) {
+    return values.map((v, i) => ({
+      x: padL + i * stepX,
+      y: padT + (h - padT - padB) * (1 - v / maxVal)
+    }));
+  }
+  const wCoords = coordsFor(weights, maxW);
+  const rCoords = coordsFor(reps, maxR);
+  const pathFor = coords => coords.map((c, i) => (i === 0 ? "M" : "L") + c.x.toFixed(1) + "," + c.y.toFixed(1)).join(" ");
+
+  return /*#__PURE__*/React.createElement("div", null,
+    /*#__PURE__*/React.createElement("svg", { viewBox: `0 0 ${w} ${h}`, width: "100%", height: h },
+      /*#__PURE__*/React.createElement("path", { d: pathFor(wCoords), fill: "none", stroke: WEIGHT_COLOR, strokeWidth: "3", strokeLinecap: "round", strokeLinejoin: "round" }),
+      /*#__PURE__*/React.createElement("path", { d: pathFor(rCoords), fill: "none", stroke: REPS_COLOR, strokeWidth: "3", strokeLinecap: "round", strokeLinejoin: "round", strokeDasharray: "8 4" }),
+      wCoords.map((c, i) => /*#__PURE__*/React.createElement("circle", { key: "w"+i, cx: c.x, cy: c.y, r: "4", fill: WEIGHT_COLOR })),
+      rCoords.map((c, i) => /*#__PURE__*/React.createElement("circle", { key: "r"+i, cx: c.x, cy: c.y, r: "4", fill: REPS_COLOR }))
+    ),
+    /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-4 px-1 mt-1.5 mb-1" },
+      /*#__PURE__*/React.createElement("span", { className: "flex items-center gap-1.5 text-xs", style: { color: C.textDim } },
+        /*#__PURE__*/React.createElement("span", { style: { width: 16, height: 3, background: WEIGHT_COLOR, display: "inline-block", borderRadius: 2 } }),
+        "Peso máx. (kg)"),
+      /*#__PURE__*/React.createElement("span", { className: "flex items-center gap-1.5 text-xs", style: { color: C.textDim } },
+        /*#__PURE__*/React.createElement("span", { style: { width: 16, height: 3, background: REPS_COLOR, display: "inline-block", borderRadius: 2 } }),
+        "Reps (mejor serie)")
+    ),
+    /*#__PURE__*/React.createElement("div", { className: "flex justify-between text-xs px-1", style: { color: C.textDim2 } },
+      /*#__PURE__*/React.createElement("span", null, fmtShort(points[0].date)),
+      /*#__PURE__*/React.createElement("span", null, fmtShort(points[points.length - 1].date))
+    )
+  );
+}
+
+
 function ProgressFlow({
   routines,
   logs,
@@ -3995,88 +4046,46 @@ function ProgressFlow({
   if (view === "dashboard") {
     const sessions = ratedSessions(logs);
     const inPeriod = sessions.filter(s => withinPeriod(s.date, period)).sort((a, b) => a.date < b.date ? -1 : 1);
-    const avgStrength = inPeriod.length ? avg(inPeriod.map(s => s.strength)) : null;
-    const avgEndurance = inPeriod.length ? avg(inPeriod.map(s => s.endurance)) : null;
+    const allLogsInPeriod = logs.filter(l => withinPeriod(l.date, period)).sort((a, b) => a.date < b.date ? -1 : 1);
+    const avgVol = allLogsInPeriod.length ? Math.round(allLogsInPeriod.reduce((s, l) => s + sessionVolume(l), 0) / allLogsInPeriod.length) : null;
+    const avgInt = allLogsInPeriod.length ? Math.round(allLogsInPeriod.reduce((s, l) => s + sessionIntensity(l), 0) / allLogsInPeriod.length) : null;
     return /*#__PURE__*/React.createElement("div", {
       className: "px-4 pt-6 pb-10"
     }, /*#__PURE__*/React.createElement("h1", {
       className: "text-3xl font-bold tracking-tight mb-1",
-      style: {
-        color: C.text
-      }
+      style: { color: C.text }
     }, "Progreso"), /*#__PURE__*/React.createElement("p", {
       className: "text-sm mb-5",
-      style: {
-        color: C.textDim
-      }
-    }, "Tu rendimiento general a lo largo del tiempo"), /*#__PURE__*/React.createElement("div", {
+      style: { color: C.textDim }
+    }, "Tu rendimiento general a lo largo del tiempo"),
+    /*#__PURE__*/React.createElement("div", {
       className: "flex rounded-full p-0.5 mb-5",
-      style: {
-        background: C.surface2
-      }
+      style: { background: C.surface2 }
     }, [["week", "Semana"], ["month", "Mes"], ["year", "Año"]].map(([k, l]) => /*#__PURE__*/React.createElement("button", {
-      key: k,
-      onClick: () => setPeriod(k),
+      key: k, onClick: () => setPeriod(k),
       className: "flex-1 text-xs font-semibold py-2 rounded-full",
-      style: period === k ? {
-        background: C.green,
-        color: C.greenText
-      } : {
-        color: C.textDim
-      }
-    }, l))), inPeriod.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
-      icon: /*#__PURE__*/React.createElement(Icon, {
-        name: "trendingUp",
-        size: 22,
-        color: C.green
-      }),
-      title: "Sin sesiones puntuadas en este período",
-      subtitle: "Guardá sesiones puntuando fuerza y resistencia para ver tu evolución acá."
-    }) : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
-      className: "flex gap-3 mb-5"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "flex-1 rounded-2xl p-4",
-      style: {
-        background: C.surface,
-        border: `1px solid ${C.border}`
-      }
-    }, /*#__PURE__*/React.createElement("p", {
-      className: "text-xs mb-1",
-      style: {
-        color: C.textDim
-      }
-    }, "Fuerza promedio"), /*#__PURE__*/React.createElement("p", {
-      className: "text-2xl font-bold",
-      style: {
-        color: C.green,
-        fontVariantNumeric: "tabular-nums"
-      }
-    }, fmt1(avgStrength))), /*#__PURE__*/React.createElement("div", {
-      className: "flex-1 rounded-2xl p-4",
-      style: {
-        background: C.surface,
-        border: `1px solid ${C.border}`
-      }
-    }, /*#__PURE__*/React.createElement("p", {
-      className: "text-xs mb-1",
-      style: {
-        color: C.textDim
-      }
-    }, "Resistencia promedio"), /*#__PURE__*/React.createElement("p", {
-      className: "text-2xl font-bold",
-      style: {
-        color: C.blue,
-        fontVariantNumeric: "tabular-nums"
-      }
-    }, fmt1(avgEndurance)))), inPeriod.length >= 2 && /*#__PURE__*/React.createElement("div", {
-      className: "rounded-2xl p-3 mb-5",
-      style: {
-        background: C.surface,
-        border: `1px solid ${C.border}`
-      }
-    }, /*#__PURE__*/React.createElement(DualLineChart, {
-      points: inPeriod
-    }))), /*#__PURE__*/React.createElement("button", {
+      style: period === k ? { background: C.green, color: C.greenText } : { color: C.textDim }
+    }, l))),
+    allLogsInPeriod.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
+      icon: /*#__PURE__*/React.createElement(Icon, { name: "trendingUp", size: 22, color: C.green }),
+      title: "Sin sesiones en este período"
+    }) : /*#__PURE__*/React.createElement(React.Fragment, null,
+      /*#__PURE__*/React.createElement("div", { className: "flex gap-3 mb-5" },
+        /*#__PURE__*/React.createElement("div", { className: "flex-1 rounded-2xl p-4", style: { background: C.surface, border: `1px solid ${C.border}` } },
+          /*#__PURE__*/React.createElement("p", { className: "text-xs mb-1", style: { color: C.textDim } }, "Volumen prom."),
+          /*#__PURE__*/React.createElement("p", { className: "text-xl font-bold", style: { color: "#2C6FFF", fontVariantNumeric: "tabular-nums" } }, avgVol ? avgVol.toLocaleString() + " kg" : "—"),
+          /*#__PURE__*/React.createElement("p", { className: "text-xs mt-0.5", style: { color: C.textDim2 } }, "kg × reps por sesión")
+        ),
+        /*#__PURE__*/React.createElement("div", { className: "flex-1 rounded-2xl p-4", style: { background: C.surface, border: `1px solid ${C.border}` } },
+          /*#__PURE__*/React.createElement("p", { className: "text-xs mb-1", style: { color: C.textDim } }, "Intensidad prom."),
+          /*#__PURE__*/React.createElement("p", { className: "text-xl font-bold", style: { color: "#34D399", fontVariantNumeric: "tabular-nums" } }, avgInt ? avgInt + " kg" : "—"),
+          /*#__PURE__*/React.createElement("p", { className: "text-xs mt-0.5", style: { color: C.textDim2 } }, "1RM aprox. promedio")
+        )
+      ),
+      allLogsInPeriod.length >= 2 && /*#__PURE__*/React.createElement("div", {
+        className: "rounded-2xl p-3 mb-5",
+        style: { background: C.surface, border: `1px solid ${C.border}` }
+      }, /*#__PURE__*/React.createElement(DualLineChart, { points: allLogsInPeriod }))), /*#__PURE__*/React.createElement("button", {
       onClick: () => setView("insights"),
       className: "w-full flex items-center justify-between rounded-2xl px-4 py-3.5",
       style: {
@@ -4313,39 +4322,7 @@ function ProgressFlow({
     style: {
       color: C.textDim
     }
-  }, "Peso (kg)"), /*#__PURE__*/React.createElement(MiniLineChart, {
-    points: points,
-    metric: "weight",
-    color: C.green
-  })), /*#__PURE__*/React.createElement("div", {
-    className: "rounded-2xl p-3",
-    style: {
-      background: C.surface,
-      border: `1px solid ${C.border}`
-    }
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "text-xs font-medium mb-1 px-1",
-    style: {
-      color: C.textDim
-    }
-  }, "Repeticiones"), /*#__PURE__*/React.createElement(MiniLineChart, {
-    points: points,
-    metric: "reps",
-    color: C.blue
-  })), ratedPoints.length >= 2 && /*#__PURE__*/React.createElement("div", {
-    className: "rounded-2xl p-3",
-    style: {
-      background: C.surface,
-      border: `1px solid ${C.border}`
-    }
-  }, /*#__PURE__*/React.createElement("p", {
-    className: "text-xs font-medium mb-1 px-1",
-    style: {
-      color: C.textDim
-    }
-  }, "Fuerza y resistencia declaradas"), /*#__PURE__*/React.createElement(DualLineChart, {
-    points: ratedPoints
-  }))), /*#__PURE__*/React.createElement("p", {
+  }, "Evolución"), points.length >= 2 && /*#__PURE__*/React.createElement(ExerciseChart, { points: points })), /*#__PURE__*/React.createElement("p", {
     className: "text-xs font-medium mb-2",
     style: {
       color: C.textDim
@@ -4390,7 +4367,7 @@ function ProgressFlow({
   }, "Fuerza ", p.strength, "/10 · Resistencia ", p.endurance, "/10", sessionDurationMin(p) !== null && ` · ${Math.round(sessionDurationMin(p))} min`, p.startedAt && ` · ${new Date(p.startedAt).toLocaleTimeString("es-AR", {
     hour: "2-digit",
     minute: "2-digit"
-  })}hs`)))))));
+  })}hs`))))))));
 }
 
 // ---------------------------------------------------------------------------
