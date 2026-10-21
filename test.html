@@ -38,7 +38,7 @@
   @keyframes pulseSoft { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   .animate-pulse-soft { animation: pulseSoft 1.6s ease-in-out infinite; }
 </style>
-<style>body::before{content:'🧪 MODO TEST — nada se guarda';position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(255,69,58,0.85);color:#fff;font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;z-index:9999;pointer-events:none;white-space:nowrap;}</style></head>
+<style>body::before{content:'🧪 MODO TEST';position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(255,69,58,0.85);color:#fff;font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;z-index:9999;pointer-events:none;white-space:nowrap;}</style></head>
 <body>
 <div id="root"></div>
 
@@ -64,29 +64,8 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
-
-// ---- GYMBRO TEST MODE ----
 window.GYMBRO_TEST = true;
-const _realFirestore = firebase.firestore.bind(firebase);
-const db = (function(){
-  const d = _realFirestore();
-  const oc = d.collection.bind(d);
-  d.collection = function(n){
-    const c = oc(n);
-    const origAdd = c.add.bind(c);
-    c.add = () => Promise.resolve({id:"t"+Date.now()});
-    const od = c.doc.bind(c);
-    c.doc = function(id){
-      const doc = od(id);
-      doc.set = () => Promise.resolve();
-      doc.update = () => Promise.resolve();
-      doc.delete = () => Promise.resolve();
-      return doc;
-    };
-    return c;
-  };
-  return d;
-})();
+const db = firebase.firestore();
 try { db.enablePersistence({ synchronizeTabs: true }).catch(() => {}); } catch(e) {}
 
 // ---------------------------------------------------------------------------
