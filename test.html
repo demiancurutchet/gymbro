@@ -42,7 +42,7 @@
 <body>
 <div id="root"></div>
 
-<script>window.GYMBRO_TEST=true;(function(){const o=firebase.firestore.bind(firebase);firebase.firestore=function(){const db=o();const oc=db.collection.bind(db);db.collection=function(n){const c=oc(n);c.add=()=>Promise.resolve({id:'t'+Date.now()});const od=c.doc.bind(c);c.doc=function(id){const d=od(id);d.set=()=>Promise.resolve();d.update=()=>Promise.resolve();d.delete=()=>Promise.resolve();return d;};return c;};return db;};}})();</script><script>
+<script>
 const {
   useState,
   useEffect,
@@ -64,7 +64,29 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
-const db = firebase.firestore();
+
+// ---- GYMBRO TEST MODE ----
+window.GYMBRO_TEST = true;
+const _realFirestore = firebase.firestore.bind(firebase);
+const db = (function(){
+  const d = _realFirestore();
+  const oc = d.collection.bind(d);
+  d.collection = function(n){
+    const c = oc(n);
+    const origAdd = c.add.bind(c);
+    c.add = () => Promise.resolve({id:"t"+Date.now()});
+    const od = c.doc.bind(c);
+    c.doc = function(id){
+      const doc = od(id);
+      doc.set = () => Promise.resolve();
+      doc.update = () => Promise.resolve();
+      doc.delete = () => Promise.resolve();
+      return doc;
+    };
+    return c;
+  };
+  return d;
+})();
 try { db.enablePersistence({ synchronizeTabs: true }).catch(() => {}); } catch(e) {}
 
 // ---------------------------------------------------------------------------
