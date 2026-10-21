@@ -763,7 +763,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.8.1";
+const APP_VERSION = "2.8.4";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1607,18 +1607,22 @@ function ExercisePlanEditor({
     }
   }, "Tocá una serie para marcarla como drop set"), /*#__PURE__*/React.createElement("div", {
     className: "flex flex-wrap gap-2"
-  }, sets.map((s, idx) => /*#__PURE__*/React.createElement("button", {
+  }, sets.map((s, idx) => s.type !== "normal" ? null : /*#__PURE__*/React.createElement("button", {
     key: s.id,
     onClick: () => toggle(idx),
     className: "text-xs font-medium px-3 py-1.5 rounded-full",
-    style: s.type === "drop" ? {
-      background: "rgba(255,159,10,0.18)",
-      color: C.orange
-    } : {
-      background: C.surface2,
-      color: C.textDim
-    }
-  }, idx + 1, s.type === "drop" ? " drop" : "")))), sets.map((s, idx) => s.type === "drop" && /*#__PURE__*/React.createElement("div", {
+    style: (() => {
+      const nextS = sets[idx + 1];
+      const hasDrop = nextS && nextS.type === "drop";
+      return hasDrop
+        ? { background: "rgba(255,159,10,0.18)", color: C.orange }
+        : { background: C.surface2, color: C.textDim };
+    })()
+  }, (() => {
+    const normalNum = sets.slice(0, idx + 1).filter(x => x.type === "normal").length;
+    const nextS = sets[idx + 1];
+    return nextS && nextS.type === "drop" ? normalNum + " drop" : normalNum;
+  })())), sets.map((s, idx) => s.type === "drop" && /*#__PURE__*/React.createElement("div", {
     key: s.id,
     className: "rounded-xl p-3",
     style: {
@@ -1667,7 +1671,7 @@ function ExercisePlanEditor({
     style: {
       color: C.blue
     }
-  }, "+ Agregar bajada")))));
+  }, "+ Agregar bajada")))))));
 }
 
 // ---------------------------------------------------------------------------
@@ -2731,9 +2735,13 @@ function SessionScreen({ routine, onCancel, onSave, onFinalize, onDone, lastSess
   if (!curEx) return null;
 
   const allSets = curEx.sets || [];
-  const totalSeries = allSets.length;
+  const normalSetsArr = allSets.filter(s => s.type === "normal");
+  const totalSeries = normalSetsArr.length || allSets.length;
   const curSet = allSets[serieIdx] || allSets[0];
-  const isLastSerie = serieIdx >= totalSeries - 1;
+  const curSetIsNormal = !curSet || curSet.type === "normal";
+  // Find the normal-set index for display purposes
+  const normalSerieIdx = allSets.slice(0, serieIdx + 1).filter(s => s.type === "normal").length - 1;
+  const isLastSerie = serieIdx >= allSets.length - 1;
   const isLastEx = exIdx >= exercises.length - 1;
   const isVeryLast = isLastSerie && isLastEx;
 
@@ -2825,9 +2833,14 @@ function SessionScreen({ routine, onCancel, onSave, onFinalize, onDone, lastSess
 
   // Rest phase
   if (phase === "rest") {
+    const nextNormalIdx = allSets.slice(0, serieIdx + 2).filter(s => s.type === "normal").length;
+    const nextSet = allSets[serieIdx + 1];
+    const nextIsNormal = !nextSet || nextSet.type === "normal";
     const nextLabel = isLastSerie
       ? (isLastEx ? "Guardar sesión" : "Iniciar " + (exercises[exIdx + 1]?.name || ""))
-      : "Serie " + (serieIdx + 2) + " de " + totalSeries;
+      : nextIsNormal
+        ? "Serie " + nextNormalIdx + " de " + totalSeries
+        : "Serie " + totalSeries + " de " + totalSeries + " (drop)";
     return /*#__PURE__*/React.createElement(RestTimer, {
       key: exIdx + "-" + serieIdx,
       onNext: handleRest,
@@ -2941,12 +2954,22 @@ function SessionScreen({ routine, onCancel, onSave, onFinalize, onDone, lastSess
         className: "mt-6 w-full flex items-center justify-center gap-2 rounded-2xl py-5 text-xl font-bold",
         style: { background: C.green, color: "#fff", opacity: saving ? 0.7 : 1 }
       }, /*#__PURE__*/React.createElement(Icon, { name: "check", size: 22, color: "#fff" }),
-        saving ? "Guardando..." : "Listo — Serie " + (serieIdx + 1) + " de " + totalSeries
+        saving ? "Guardando..." : (() => {
+          const sNum = curSetIsNormal ? (normalSerieIdx + 1) : totalSeries;
+          const suffix = !curSetIsNormal ? " + drop" : "";
+          return "Listo — Serie " + sNum + " de " + totalSeries + suffix;
+        })()
       ),
       !isLastSerie && /*#__PURE__*/React.createElement("p", {
         className: "text-center mt-3 text-sm",
         style: { color: C.textDim }
-      }, "Después: Serie " + (serieIdx + 2) + " de " + totalSeries),
+      }, (() => {
+        const nextSet2 = allSets[serieIdx + 1];
+        const nextNorm = allSets.slice(0, serieIdx + 2).filter(s => s.type === "normal").length;
+        return nextSet2?.type === "drop"
+          ? "Después: Drop set"
+          : "Después: Serie " + nextNorm + " de " + totalSeries;
+      })()),
       isLastSerie && !isLastEx && /*#__PURE__*/React.createElement("p", {
         className: "text-center mt-3 text-sm",
         style: { color: C.textDim }
@@ -4003,6 +4026,8 @@ function ExerciseChart({ points }) {
 function ProgressFlow({
   routines,
   logs,
+  hideNutrition,
+  onToggleNutrition,
   nutrition,
   goals,
   dismissedInsights,
@@ -4137,7 +4162,21 @@ function ProgressFlow({
       name: "chevronRight",
       size: 18,
       color: C.textDim2
-    })));
+    }))), onToggleNutrition && /*#__PURE__*/React.createElement("button", {
+      onClick: onToggleNutrition,
+      className: "w-full flex items-center justify-between rounded-2xl px-4 py-3.5",
+      style: { background: C.surface, border: `1px solid ${C.border}` }
+    }, /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-3" },
+      /*#__PURE__*/React.createElement("span", { style: { fontSize: 18 } }, "🥗"),
+      /*#__PURE__*/React.createElement("span", { className: "font-medium", style: { color: C.text } }, "M\xF3dulo de alimentaci\xF3n")
+    ), /*#__PURE__*/React.createElement("div", {
+      className: "flex items-center gap-2"
+    }, /*#__PURE__*/React.createElement("span", { className: "text-xs", style: { color: hideNutrition ? C.textDim : C.accentBlue } }, hideNutrition ? "Apagado" : "Activo"),
+    /*#__PURE__*/React.createElement("div", {
+      style: { width: 36, height: 22, borderRadius: 11, background: hideNutrition ? C.surface2 : C.accentBlue, padding: 2, display: "flex", alignItems: "center", justifyContent: hideNutrition ? "flex-start" : "flex-end", transition: "background 0.2s" }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: { width: 18, height: 18, borderRadius: 9, background: "#fff" }
+    }))));
   }
 
   // view === "detail"
@@ -4775,9 +4814,10 @@ function NutritionScreen({
 }
 function BottomNav({
   tab,
-  setTab
+  setTab,
+  hideNutrition
 }) {
-  const items = [{
+  const allItems = [{
     k: "inicio",
     l: "Inicio",
     icon: "home"
@@ -4794,6 +4834,7 @@ function BottomNav({
     l: "Alimentación",
     icon: "apple"
   }];
+  const items = hideNutrition ? allItems.filter(i => i.k !== "proteina") : allItems;
   return /*#__PURE__*/React.createElement("div", {
     className: "fixed bottom-0 inset-x-0 backdrop-blur-xl",
     style: {
@@ -5356,6 +5397,12 @@ function MainApp({
       await db.collection("settings").doc(uid).set({ ownerUid: uid, insightsContext: text }, { merge: true });
     } catch(e) {}
   }
+  async function toggleHideNutrition() {
+    const next = !hideNutrition;
+    setHideNutrition(next);
+    if (tab === "proteina") setTab("inicio");
+    db.collection("settings").doc(ownerUid).set({ ownerUid: ownerUid, hideNutrition: next }, { merge: true });
+  }
   async function saveMilestone(milestone) {
     try {
       const doc = await db.collection("settings").doc(uid).get();
@@ -5547,6 +5594,8 @@ function MainApp({
   }), tab === "progreso" && /*#__PURE__*/React.createElement(ProgressFlow, {
     routines: routines,
     logs: logs,
+    hideNutrition: hideNutrition,
+    onToggleNutrition: toggleHideNutrition,
     nutrition: nutrition,
     goals: goals,
     dismissedInsights: dismissedInsights,
@@ -5572,6 +5621,7 @@ function MainApp({
     onTestGapPrompt: testGapPrompt
   })), !loading && !inSession && /*#__PURE__*/React.createElement(BottomNav, {
     tab: tab,
+    hideNutrition: hideNutrition,
     setTab: t => {
       setTab(t);
       setRutinasView(null);
