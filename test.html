@@ -5030,6 +5030,7 @@ function MainApp({
   const [logs, setLogs] = useState(null);
   const [nutrition, setNutrition] = useState(null);
   const [hiddenFoods, setHiddenFoods] = useState(null);
+  const [hideNutrition, setHideNutrition] = useState(false);
   const [customFoods, setCustomFoods] = useState(null);
   const [goals, setGoals] = useState(null);
   const [gapDismissedAt, setGapDismissedAt] = useState(null);
@@ -5090,6 +5091,7 @@ function MainApp({
       setRefinedInsights(settings.refinedInsights || []);
       setInsightsContext(settings.insightsContext || "");
       setHiddenFoods(settings.hiddenFoods || []);
+      setHideNutrition(settings.hideNutrition === true);
       const cloudFoods = settings.customFoods || [];
       let localFoods = [];
       try { localFoods = JSON.parse(localStorage.getItem("gymbro_custom_foods_" + uid) || "[]"); } catch(e) {}
