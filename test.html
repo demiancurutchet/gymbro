@@ -2756,17 +2756,20 @@ function SessionScreen({ routine, onCancel, onSave, onFinalize, onDone, lastSess
 
   // Improvement info
   const improvementInfo = (() => {
-    return { count: 2, maxRir: 3, date: "2026-07-28" }; // GYMBRO_TEST_IMPROVEMENT_MOCK
+    return { count: 2, maxRir: 3, date: "2026-07-28", serieNums: [1, 3] }; // GYMBRO_TEST_IMPROVEMENT_MOCK
     if (!lastSession || !curEx) return null;
     const lastEx = lastSession.exercises.find(e =>
       e.name.trim().toLowerCase() === (curEx.name || "").trim().toLowerCase()
     );
     if (!lastEx) return null;
-    const setsWithMargin = (lastEx.sets || [])
-      .filter(s => s.type === "normal" && s.rir !== undefined && s.rir >= 2);
+    const normalSets = (lastEx.sets || []).filter(s => s.type === "normal");
+    const setsWithMargin = normalSets
+      .map((s, i) => ({ ...s, serieNum: i + 1 }))
+      .filter(s => s.rir !== undefined && s.rir >= 2);
     if (setsWithMargin.length === 0) return null;
     const maxRir = Math.max(...setsWithMargin.map(s => s.rir));
-    return { count: setsWithMargin.length, maxRir, date: lastSession.date };
+    const serieNums = setsWithMargin.map(s => s.serieNum);
+    return { count: setsWithMargin.length, maxRir, date: lastSession.date, serieNums };
   })();
 
   function updateExSets(sets) {
@@ -2943,8 +2946,8 @@ function SessionScreen({ routine, onCancel, onSave, onFinalize, onDone, lastSess
           /*#__PURE__*/React.createElement("p", { className: "text-xs font-bold mb-1", style: { color: "#34D399" } }, "El " + fmtFull(improvementInfo.date)),
           /*#__PURE__*/React.createElement("p", { className: "text-sm", style: { color: C.text } },
             improvementInfo.count === 1
-              ? "1 serie con RIR " + improvementInfo.maxRir + " — subí peso o agregá una rep."
-              : improvementInfo.count + " series con RIR ≥ 2 (máx. " + improvementInfo.maxRir + ") — tenés margen para subir."
+              ? "Serie " + improvementInfo.serieNums[0] + " con RIR " + improvementInfo.maxRir + " — subí peso o agregá una rep."
+              : "Series " + improvementInfo.serieNums.join(", ") + " con RIR ≥ 2 (máx. " + improvementInfo.maxRir + ") — tenés margen para subir."
           )
         )
       ),
