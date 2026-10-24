@@ -10,7 +10,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
-<title>Gymbro TEST 🧪</title>
+<title>Gymbro</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='5' fill='%23070C16'/%3E%3Crect x='3' y='8' width='5' height='8' rx='1.5' fill='%232C6FFF'/%3E%3Crect x='16' y='8' width='5' height='8' rx='1.5' fill='%232C6FFF'/%3E%3Crect x='8' y='10.5' width='8' height='3' rx='1' fill='%232C6FFF'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -37,8 +37,16 @@
   .animate-in { animation: fadeUp .25s ease both; }
   @keyframes pulseSoft { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   .animate-pulse-soft { animation: pulseSoft 1.6s ease-in-out infinite; }
+
+  body[data-gymbro-test]::before {
+    content: "🧪 MODO TEST";
+    position: fixed; top: 0; left: 0; right: 0;
+    background: #b45309; color: #fff;
+    text-align: center; font-size: 11px; font-weight: 700;
+    padding: 3px 0; z-index: 9999; letter-spacing: 1px;
+  }
 </style>
-<style>body::before{content:'🧪 MODO TEST';position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:rgba(255,69,58,0.85);color:#fff;font-size:11px;font-weight:700;padding:4px 12px;border-radius:20px;z-index:9999;pointer-events:none;white-space:nowrap;}</style></head>
+</head>
 <body>
 <div id="root"></div>
 
@@ -2748,7 +2756,7 @@ function SessionScreen({ routine, onCancel, onSave, onFinalize, onDone, lastSess
 
   // Improvement info
   const improvementInfo = (() => {
-    return { count: 2, maxRir: 3, date: "2026-07-28" };
+    return { count: 2, maxRir: 3, date: "2026-07-28" }; // GYMBRO_TEST_IMPROVEMENT_MOCK
     if (!lastSession || !curEx) return null;
     const lastEx = lastSession.exercises.find(e =>
       e.name.trim().toLowerCase() === (curEx.name || "").trim().toLowerCase()
@@ -3517,7 +3525,11 @@ function InsightsScreen({
         }).join(", ");
         return `${ex.name}(${setStr})`;
       }).join("; ");
-      return `  - ${l.date}: ${exDetails}${l.painAreas && l.painAreas.length ? " | dolor: " + l.painAreas.join("/") : ""}`;
+      const dias = ["dom","lun","mar","mié","jue","vie","sáb"];
+      const dateObj = new Date(l.date + "T12:00:00");
+      const diaSemana = dias[dateObj.getDay()];
+      const hora = l.startedAt ? ` ${new Date(l.startedAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}hs` : "";
+      return `  - ${l.date} (${diaSemana}${hora}): ${exDetails}${l.painAreas && l.painAreas.length ? " | dolor: " + l.painAreas.join("/") : ""}`;
     }).join("\n");
     const nutritionDays = {};
     (nutrition || []).forEach(e => {
