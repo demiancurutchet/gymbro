@@ -37,14 +37,6 @@
   .animate-in { animation: fadeUp .25s ease both; }
   @keyframes pulseSoft { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
   .animate-pulse-soft { animation: pulseSoft 1.6s ease-in-out infinite; }
-
-  body[data-gymbro-test]::before {
-    content: "🧪 MODO TEST";
-    position: fixed; top: 0; left: 0; right: 0;
-    background: #b45309; color: #fff;
-    text-align: center; font-size: 11px; font-weight: 700;
-    padding: 3px 0; z-index: 9999; letter-spacing: 1px;
-  }
 </style>
 </head>
 <body>
@@ -248,13 +240,32 @@ function getBase(sets) {
   };
 }
 function resizeSets(sets, count, base) {
-  const arr = sets.slice();
-  if (count > arr.length) {
-    while (arr.length < count) arr.push(makeNormalSet(base.reps, base.weight));
-  } else if (count < arr.length) {
-    arr.length = Math.max(1, count);
+  // Only count/add/remove normal sets; keep drops inline with their normal
+  const result = [];
+  let normalCount = 0;
+  for (const s of sets) {
+    if (s.type === "normal") {
+      if (normalCount < count) { result.push(s); normalCount++; }
+      // if not included, the following drop (if any) is skipped below
+    } else if (s.type === "drop") {
+      // keep drop only when the previous element was an included normal
+      if (result.length > 0 && result[result.length - 1].type === "normal") result.push(s);
+    }
   }
-  return arr;
+  while (normalCount < count) { result.push(makeNormalSet(base.reps, base.weight)); normalCount++; }
+  return result;
+}
+function mergeDropsInline(normalSets, existingSets) {
+  // Re-interleave drops after their corresponding normal (by position)
+  const dropByNormalIdx = {};
+  let ni = 0;
+  for (const s of existingSets) {
+    if (s.type === "normal") ni++;
+    else if (s.type === "drop") dropByNormalIdx[ni - 1] = s;
+  }
+  const result = [];
+  normalSets.forEach((s, i) => { result.push(s); if (dropByNormalIdx[i] !== undefined) result.push(dropByNormalIdx[i]); });
+  return result;
 }
 function applyBaseToNormals(sets, reps, weight) {
   return sets.map(s => s.type === "normal" ? {
@@ -275,19 +286,16 @@ function defaultDrops(base) {
   }];
 }
 function toggleSetType(sets, idx, base) {
+  // Insert a drop entry AFTER the normal set (not replace it),
+  // or remove it if one already follows.
   const arr = sets.slice();
-  const s = arr[idx];
-  arr[idx] = s.type === "drop" ? {
-    ...s,
-    type: "normal",
-    reps: base.reps,
-    weight: base.weight,
-    drops: []
-  } : {
-    ...s,
-    type: "drop",
-    drops: defaultDrops(base)
-  };
+  const nextS = arr[idx + 1];
+  const hasDrop = nextS && nextS.type === "drop";
+  if (hasDrop) {
+    arr.splice(idx + 1, 1); // remove the drop
+  } else {
+    arr.splice(idx + 1, 0, { id: uid(), type: "drop", drops: defaultDrops(base) }); // insert after
+  }
   return arr;
 }
 function setTopWeight(s) {
@@ -1358,9 +1366,9 @@ function ExercisePlanEditor({
   onSetDone
 }) {
   const base = getBase(sets);
-  const count = sets.length;
-  const weightLabel = bodyweight ? "Peso adic. (kg)" : "Peso (kg)";
   const normalSets = sets.filter(s => s.type === "normal");
+  const count = normalSets.length;
+  const weightLabel = bodyweight ? "Peso adic. (kg)" : "Peso (kg)";
   const isUniform = normalSets.length === 0 || normalSets.every(s => s.reps === normalSets[0].reps && s.weight === normalSets[0].weight);
   const normalSetsForInit = sets.filter(s => s.type === "normal");
   const hasVariedSets = normalSetsForInit.length > 1 && normalSetsForInit.some(
@@ -1368,8 +1376,6 @@ function ExercisePlanEditor({
   );
   const [custom, setCustom] = useState(hasVariedSets);
   const [groups, setGroups] = useState(() => setsToGroups(normalSetsForInit));
-  const dropSets = sets.filter(s => s.type === "drop");
-
   function enterCustom() {
     setGroups(setsToGroups(sets.filter(s => s.type === "normal")));
     setCustom(true);
@@ -1377,11 +1383,11 @@ function ExercisePlanEditor({
   function exitCustom() {
     setCustom(false);
     const normalExpanded = groupsToSets(groups, sets);
-    onChange([...normalExpanded, ...dropSets]);
+    onChange(mergeDropsInline(normalExpanded, sets));
   }
   function updateGroups(next) {
     setGroups(next);
-    onChange([...groupsToSets(next, sets), ...dropSets]);
+    onChange(mergeDropsInline(groupsToSets(next, sets), sets));
   }
   function addGroup() {
     updateGroups([...groups, {
@@ -1642,7 +1648,7 @@ function ExercisePlanEditor({
     style: {
       color: C.orange
     }
-  }, "Serie ", idx + 1, " · bajadas"), /*#__PURE__*/React.createElement("div", {
+  }, "Serie ", sets.slice(0, idx).filter(x => x.type === "normal").length, " · bajadas"), /*#__PURE__*/React.createElement("div", {
     className: "space-y-2"
   }, s.drops.map((d, di) => /*#__PURE__*/React.createElement("div", {
     key: d.id,
@@ -2757,7 +2763,7 @@ function SessionScreen({ routine, onCancel, onSave, onFinalize, onDone, lastSess
 
   // Improvement info
   const improvementInfo = (() => {
-    return { count: 2, maxRir: 3, date: "2026-07-28", serieNums: [1, 3] }; // GYMBRO_TEST_IMPROVEMENT_MOCK
+    // GYMBRO_TEST_IMPROVEMENT_MOCK
     if (!lastSession || !curEx) return null;
     const lastEx = lastSession.exercises.find(e =>
       e.name.trim().toLowerCase() === (curEx.name || "").trim().toLowerCase()
