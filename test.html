@@ -2872,6 +2872,7 @@ function SessionScreen({ routine, onCancel, onSave, onFinalize, onDone, lastSess
     } else {
       // Skip rest timer when next set is a drop (drop sets go directly, no rest)
       const nextSet = arr[exIdx].sets[serieIdx + 1];
+      console.log("[handleRir] serieIdx="+serieIdx+" nextSet="+JSON.stringify(nextSet)+" allSets="+JSON.stringify(arr[exIdx].sets.map(s=>s.type)));
       if (nextSet && nextSet.type === "drop") {
         setSerieIdx(serieIdx + 1);
         saveDraft(arr, exIdx, serieIdx + 1);
