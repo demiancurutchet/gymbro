@@ -2398,9 +2398,13 @@ function RoutinesList({
           { id: "ss2", type: "normal", reps: 10, weight: 60, drops: [] },
           { id: "ss3", type: "normal", reps: 8, weight: 65, drops: [] },
         ]},
-        { id: "s2", name: "Remo con barra", bodyweight: false, sets: [
-          { id: "ss4", type: "normal", reps: 10, weight: 50, drops: [] },
-          { id: "ss5", type: "normal", reps: 10, weight: 50, drops: [] },
+        { id: "s2", name: "Curl con mancuernas (drop)", bodyweight: false, sets: [
+          { id: "ss4", type: "normal", reps: 10, weight: 14, drops: [] },
+          { id: "ss5", type: "normal", reps: 10, weight: 14, drops: [] },
+          { id: "ss5d", type: "drop", reps: 10, weight: 14, drops: [
+            { id: "d1", reps: 10, weight: 12 },
+            { id: "d2", reps: 10, weight: 10 },
+          ]},
         ]},
         { id: "s3", name: "Dominadas", bodyweight: true, sets: [
           { id: "ss6", type: "normal", reps: 8, weight: 0, drops: [] },
@@ -2870,12 +2874,18 @@ function SessionScreen({ routine, onCancel, onSave, onFinalize, onDone, lastSess
       onSave({ routineId: routine.id, routineName: routine.name, date, exercises: arr, startedAt, endedAt: new Date().toISOString() })
         .then(saved => { setSaving(false); if (saved) { clearDraft(); setSavedId(saved.id); } });
     } else {
-      // Skip rest timer when next set is a drop (drop sets go directly, no rest)
+      // Skip rest timer when next set is a drop — check both inline model and legacy nested drops
+      const curSet = arr[exIdx].sets[serieIdx];
       const nextSet = arr[exIdx].sets[serieIdx + 1];
-      console.log("[handleRir] serieIdx="+serieIdx+" nextSet="+JSON.stringify(nextSet)+" allSets="+JSON.stringify(arr[exIdx].sets.map(s=>s.type)));
-      if (nextSet && nextSet.type === "drop") {
-        setSerieIdx(serieIdx + 1);
-        saveDraft(arr, exIdx, serieIdx + 1);
+      const nextIsDrop = (nextSet && nextSet.type === "drop") || ((curSet?.drops || []).length > 0);
+      if (nextIsDrop) {
+        // If drop is inline as next entry, advance to it; otherwise stay on same set (drop is nested)
+        if (nextSet && nextSet.type === "drop") {
+          setSerieIdx(serieIdx + 1);
+          saveDraft(arr, exIdx, serieIdx + 1);
+        } else {
+          saveDraft(arr, exIdx, serieIdx);
+        }
         setPhase("exercise");
         setRirValue(null);
       } else {
