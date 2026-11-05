@@ -2874,20 +2874,34 @@ function SessionScreen({ routine, onCancel, onSave, onFinalize, onDone, lastSess
       onSave({ routineId: routine.id, routineName: routine.name, date, exercises: arr, startedAt, endedAt: new Date().toISOString() })
         .then(saved => { setSaving(false); if (saved) { clearDraft(); setSavedId(saved.id); } });
     } else {
-      // Skip rest timer when next set is a drop — check both inline model and legacy nested drops
+      // Check if next set is a drop (inline model) or current set has drops (legacy)
       const curSet = arr[exIdx].sets[serieIdx];
       const nextSet = arr[exIdx].sets[serieIdx + 1];
       const nextIsDrop = (nextSet && nextSet.type === "drop") || ((curSet?.drops || []).length > 0);
       if (nextIsDrop) {
-        // If drop is inline as next entry, advance to it; otherwise stay on same set (drop is nested)
-        if (nextSet && nextSet.type === "drop") {
-          setSerieIdx(serieIdx + 1);
-          saveDraft(arr, exIdx, serieIdx + 1);
+        // Drop is done together with the current set (no separate CTA).
+        // Skip the drop entry and go to rest/next exercise.
+        const dropIdx = nextSet && nextSet.type === "drop" ? serieIdx + 1 : serieIdx;
+        const isDropLast = dropIdx >= arr[exIdx].sets.length - 1;
+        if (isLastEx && isDropLast) {
+          // Last exercise, drop was last set → save session
+          setSaving(true);
+          onSave({ routineId: routine.id, routineName: routine.name, date, exercises: arr, startedAt, endedAt: new Date().toISOString() })
+            .then(saved => { setSaving(false); if (saved) { clearDraft(); setSavedId(saved.id); } });
+        } else if (isDropLast) {
+          // Drop was last set of this exercise → rest, then next exercise
+          // Set serieIdx to dropIdx so handleRest sees isLastSerie=true and advances exIdx
+          setSerieIdx(dropIdx);
+          saveDraft(arr, exIdx, dropIdx);
+          setPhase("rest");
+          setRirValue(null);
         } else {
-          saveDraft(arr, exIdx, serieIdx);
+          // More sets after drop in same exercise
+          setSerieIdx(dropIdx + 1);
+          saveDraft(arr, exIdx, dropIdx + 1);
+          setPhase("exercise");
+          setRirValue(null);
         }
-        setPhase("exercise");
-        setRirValue(null);
       } else {
         setPhase("rest");
       }
@@ -3052,27 +3066,39 @@ function SessionScreen({ routine, onCancel, onSave, onFinalize, onDone, lastSess
           setExercises(arr);
         }
       }),
-      /*#__PURE__*/React.createElement("button", {
-        onClick: handleListo,
-        className: "mt-6 w-full flex items-center justify-center gap-2 rounded-2xl py-5 text-xl font-bold",
-        style: { background: C.green, color: "#fff", opacity: saving ? 0.7 : 1 }
-      }, /*#__PURE__*/React.createElement(Icon, { name: "check", size: 22, color: "#fff" }),
-        saving ? "Guardando..." : (() => {
-          const sNum = curSetIsNormal ? (normalSerieIdx + 1) : totalSeries;
-          const suffix = !curSetIsNormal ? " + drop" : "";
-          return "Listo — Serie " + sNum + " de " + totalSeries + suffix;
-        })()
-      ),
-      !isLastSerie && /*#__PURE__*/React.createElement("p", {
-        className: "text-center mt-3 text-sm",
-        style: { color: C.textDim }
-      }, (() => {
+      (() => {
         const nextSet2 = allSets[serieIdx + 1];
-        const nextNorm = allSets.slice(0, serieIdx + 2).filter(s => s.type === "normal").length;
-        return nextSet2?.type === "drop"
-          ? "Después: Drop set"
-          : "Después: Serie " + nextNorm + " de " + totalSeries;
-      })()),
+        const thisHasDrop = curSetIsNormal && nextSet2?.type === "drop";
+        const dropEntry = thisHasDrop ? nextSet2 : null;
+        return /*#__PURE__*/React.createElement(React.Fragment, null,
+          /*#__PURE__*/React.createElement("button", {
+            onClick: handleListo,
+            className: "mt-6 w-full flex items-center justify-center gap-2 rounded-2xl py-5 text-xl font-bold",
+            style: { background: C.green, color: "#fff", opacity: saving ? 0.7 : 1 }
+          }, /*#__PURE__*/React.createElement(Icon, { name: "check", size: 22, color: "#fff" }),
+            saving ? "Guardando..." : (() => {
+              const sNum = curSetIsNormal ? (normalSerieIdx + 1) : totalSeries;
+              const suffix = thisHasDrop ? " + drop" : (!curSetIsNormal ? " + drop" : "");
+              return "Listo — Serie " + sNum + " de " + totalSeries + suffix;
+            })()
+          ),
+          dropEntry && /*#__PURE__*/React.createElement("div", {
+            style: { marginTop: 10, padding: "10px 16px", borderRadius: 12, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }
+          },
+            /*#__PURE__*/React.createElement("p", { style: { color: C.textDim, fontSize: 11, marginBottom: 4, letterSpacing: 1, textTransform: "uppercase" } }, "Bajadas (drop set)"),
+            /*#__PURE__*/React.createElement("p", { style: { color: C.text, fontSize: 14 } },
+              (dropEntry.drops || []).map((d, i) => (i > 0 ? " → " : "") + d.reps + "×" + (d.weight || "PC") + "kg").join("")
+            )
+          ),
+          !isLastSerie && !thisHasDrop && /*#__PURE__*/React.createElement("p", {
+            className: "text-center mt-3 text-sm",
+            style: { color: C.textDim }
+          }, (() => {
+            const nextNorm = allSets.slice(0, serieIdx + 2).filter(s => s.type === "normal").length;
+            return "Después: Serie " + nextNorm + " de " + totalSeries;
+          })())
+        );
+      })(),
       isLastSerie && !isLastEx && /*#__PURE__*/React.createElement("p", {
         className: "text-center mt-3 text-sm",
         style: { color: C.textDim }
