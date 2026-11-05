@@ -64,7 +64,6 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
-window.GYMBRO_TEST = true;
 const db = firebase.firestore();
 try { db.enablePersistence({ synchronizeTabs: true }).catch(() => {}); } catch(e) {}
 
@@ -780,7 +779,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.8.4";
+const APP_VERSION = "2.8.6";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1376,6 +1375,7 @@ function ExercisePlanEditor({
   );
   const [custom, setCustom] = useState(hasVariedSets);
   const [groups, setGroups] = useState(() => setsToGroups(normalSetsForInit));
+  const savedDrop = React.useRef(null); // preserves drop config when moving it to another serie
   function enterCustom() {
     setGroups(setsToGroups(sets.filter(s => s.type === "normal")));
     setCustom(true);
@@ -1419,7 +1419,21 @@ function ExercisePlanEditor({
     onChange(applyBaseToNormals(sets, base.reps, v));
   }
   function toggle(idx) {
-    onChange(toggleSetType(sets, idx, base));
+    const nextS = sets[idx + 1];
+    const hasDrop = nextS && nextS.type === "drop";
+    if (hasDrop) {
+      savedDrop.current = nextS; // save before removing
+      onChange(toggleSetType(sets, idx, base));
+    } else {
+      // Reuse saved drop config if available (user is "moving" the drop)
+      const arr = sets.slice();
+      const newDrop = savedDrop.current
+        ? { ...savedDrop.current, id: uid() }
+        : { id: uid(), type: "drop", drops: defaultDrops(base) };
+      savedDrop.current = null;
+      arr.splice(idx + 1, 0, newDrop);
+      onChange(arr);
+    }
   }
   function updateDropStage(idx, di, nextDrop) {
     const arr = sets.slice();
@@ -2812,7 +2826,16 @@ function SessionScreen({ routine, onCancel, onSave, onFinalize, onDone, lastSess
       onSave({ routineId: routine.id, routineName: routine.name, date, exercises: arr, startedAt, endedAt: new Date().toISOString() })
         .then(saved => { setSaving(false); if (saved) { clearDraft(); setSavedId(saved.id); } });
     } else {
-      setPhase("rest");
+      // Skip rest timer when next set is a drop (drop sets go directly, no rest)
+      const nextSet = arr[exIdx].sets[serieIdx + 1];
+      if (nextSet && nextSet.type === "drop") {
+        setSerieIdx(serieIdx + 1);
+        saveDraft(arr, exIdx, serieIdx + 1);
+        setPhase("exercise");
+        setRirValue(null);
+      } else {
+        setPhase("rest");
+      }
     }
   }
 
@@ -4062,12 +4085,117 @@ function ProgressFlow({
   onSaveMilestone,
   onLoadMilestones
 }) {
-  const [view, setView] = useState("dashboard"); // dashboard | insights | detail | protein-calendar
+  const [view, setView] = useState("dashboard"); // dashboard | insights | detail | protein-calendar | sessions | sessionDetail
   const [period, setPeriod] = useState("month");
   const [exercisePeriod, setExercisePeriod] = useState("month");
   const [routineId, setRoutineId] = useState(null);
   const [exerciseName, setExerciseName] = useState(null);
+  const [selectedLogId, setSelectedLogId] = useState(null);
   const routine = routines.find(r => r.id === routineId);
+
+  function fmtDuration(log) {
+    if (!log.startedAt || !log.endedAt) return null;
+    const mins = Math.round((new Date(log.endedAt) - new Date(log.startedAt)) / 60000);
+    if (mins <= 0) return null;
+    if (mins < 60) return mins + " min";
+    const h = Math.floor(mins / 60), m = mins % 60;
+    return m === 0 ? h + "h" : h + "h " + m + "min";
+  }
+  function fmtSetLabel(s, bodyweight) {
+    if (s.type === "drop") return "Drop: " + (s.drops || []).map(d => d.reps + "×" + (d.weight ? d.weight + "kg" : "PC")).join(" → ");
+    if (bodyweight && !s.weight) return s.reps + " reps (PC)";
+    return s.reps + " × " + s.weight + "kg";
+  }
+
+  if (view === "sessions") {
+    const sorted = (logs || []).slice().sort((a, b) => b.date < a.date ? -1 : 1);
+    return /*#__PURE__*/React.createElement("div", { className: "pb-10" },
+      /*#__PURE__*/React.createElement(BackHeader, { onBack: () => setView("dashboard"), title: "Historial de sesiones" }),
+      /*#__PURE__*/React.createElement("div", { className: "px-4 pt-4 space-y-2" },
+        sorted.length === 0 ? /*#__PURE__*/React.createElement(EmptyState, {
+          icon: /*#__PURE__*/React.createElement(Icon, { name: "calendar", size: 22, color: C.green }),
+          title: "Sin sesiones registradas"
+        }) : sorted.map(log => {
+          const dur = fmtDuration(log);
+          const exCount = (log.exercises || []).length;
+          const d = new Date(log.date + "T12:00:00");
+          const dias = ["dom","lun","mar","mié","jue","vie","sáb"];
+          const dateStr = dias[d.getDay()] + " " + d.getDate() + "/" + (d.getMonth()+1) + "/" + String(d.getFullYear()).slice(2);
+          return /*#__PURE__*/React.createElement("button", {
+            key: log.id,
+            onClick: () => { setSelectedLogId(log.id); setView("sessionDetail"); },
+            className: "w-full text-left rounded-2xl px-4 py-3.5",
+            style: { background: C.surface, border: `1px solid ${C.border}` }
+          },
+            /*#__PURE__*/React.createElement("div", { className: "flex items-center justify-between" },
+              /*#__PURE__*/React.createElement("div", null,
+                /*#__PURE__*/React.createElement("p", { className: "font-semibold text-sm", style: { color: C.text } }, log.routineName || "Sesión"),
+                /*#__PURE__*/React.createElement("p", { className: "text-xs mt-0.5", style: { color: C.textDim } },
+                  dateStr,
+                  dur ? " · " + dur : "",
+                  " · " + exCount + (exCount === 1 ? " ejercicio" : " ejercicios")
+                )
+              ),
+              /*#__PURE__*/React.createElement(Icon, { name: "chevronRight", size: 18, color: C.textDim2 })
+            )
+          );
+        })
+      )
+    );
+  }
+
+  if (view === "sessionDetail") {
+    const log = (logs || []).find(l => l.id === selectedLogId);
+    if (!log) return /*#__PURE__*/React.createElement("div", null);
+    const dur = fmtDuration(log);
+    const d = new Date(log.date + "T12:00:00");
+    const dias = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+    const dateStr = dias[d.getDay()] + ", " + d.getDate() + "/" + (d.getMonth()+1) + "/" + d.getFullYear();
+    const timeStr = log.startedAt ? new Date(log.startedAt).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) : null;
+    return /*#__PURE__*/React.createElement("div", { className: "pb-10" },
+      /*#__PURE__*/React.createElement(BackHeader, { onBack: () => setView("sessions"), title: log.routineName || "Sesión" }),
+      /*#__PURE__*/React.createElement("div", { className: "px-4 pt-4" },
+        /*#__PURE__*/React.createElement("div", { className: "rounded-2xl px-4 py-3 mb-4", style: { background: C.surface, border: `1px solid ${C.border}` } },
+          /*#__PURE__*/React.createElement("p", { className: "text-sm font-semibold", style: { color: C.text } }, dateStr),
+          /*#__PURE__*/React.createElement("p", { className: "text-xs mt-1", style: { color: C.textDim } },
+            timeStr ? timeStr + "hs" : "",
+            timeStr && dur ? " · " : "",
+            dur ? dur : "",
+            !timeStr && !dur ? "Sin horario registrado" : ""
+          )
+        ),
+        /*#__PURE__*/React.createElement("div", { className: "space-y-3" },
+          (log.exercises || []).map((ex, ei) => {
+            const normalSets = (ex.sets || []).filter(s => s.type === "normal");
+            const dropSets = (ex.sets || []).filter(s => s.type === "drop");
+            return /*#__PURE__*/React.createElement("div", { key: ei, className: "rounded-2xl px-4 py-3", style: { background: C.surface, border: `1px solid ${C.border}` } },
+              /*#__PURE__*/React.createElement("p", { className: "font-semibold mb-2", style: { color: C.text } }, ex.name),
+              /*#__PURE__*/React.createElement("div", { className: "space-y-1" },
+                (ex.sets || []).map((s, si) => {
+                  const isDropType = s.type === "drop";
+                  const precedingNormals = (ex.sets || []).slice(0, si).filter(x => x.type === "normal").length;
+                  return /*#__PURE__*/React.createElement("div", { key: si, className: "flex items-center gap-2" },
+                    /*#__PURE__*/React.createElement("span", {
+                      className: "text-xs w-5 text-center font-medium",
+                      style: { color: isDropType ? C.orange : C.textDim2 }
+                    }, isDropType ? "↓" : precedingNormals + 1),
+                    /*#__PURE__*/React.createElement("span", { className: "text-sm", style: { color: isDropType ? C.orange : C.text } },
+                      fmtSetLabel(s, ex.bodyweight)
+                    ),
+                    s.rir !== undefined && s.type === "normal" && /*#__PURE__*/React.createElement("span", {
+                      className: "text-xs ml-auto",
+                      style: { color: C.textDim }
+                    }, s.rir < 0 ? "Fallé" : "RIR " + s.rir)
+                  );
+                })
+              )
+            );
+          })
+        )
+      )
+    );
+  }
+
   if (view === "protein-calendar") {
     return /*#__PURE__*/React.createElement(ProteinCalendar, {
       nutrition: nutrition,
@@ -4162,6 +4290,14 @@ function ProgressFlow({
     }, /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-3" },
       /*#__PURE__*/React.createElement(Icon, { name: "calendar", size: 18, color: C.textDim }),
       /*#__PURE__*/React.createElement("span", { className: "font-semibold", style: { color: C.text } }, "Calendario de proteínas")
+    ), /*#__PURE__*/React.createElement(Icon, { name: "chevronRight", size: 18, color: C.textDim2 })),
+    /*#__PURE__*/React.createElement("button", {
+      onClick: () => setView("sessions"),
+      className: "w-full flex items-center justify-between rounded-2xl px-4 py-3.5",
+      style: { background: C.surface, border: `1px solid ${C.border}` }
+    }, /*#__PURE__*/React.createElement("div", { className: "flex items-center gap-3" },
+      /*#__PURE__*/React.createElement(Icon, { name: "calendar", size: 18, color: C.textDim }),
+      /*#__PURE__*/React.createElement("span", { className: "font-semibold", style: { color: C.text } }, "Historial de sesiones")
     ), /*#__PURE__*/React.createElement(Icon, { name: "chevronRight", size: 18, color: C.textDim2 })),
     /*#__PURE__*/React.createElement("button", {
       onClick: () => setView("detail"),
