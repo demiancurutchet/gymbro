@@ -868,7 +868,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.8.17";
+const APP_VERSION = "2.8.18";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1849,7 +1849,7 @@ function ExercisePlanEditor({
 
 function renderLastSession(logs, todayISO, C) {
   const sorted = [...(logs || [])].sort((a,b) => b.date.localeCompare(a.date));
-  const last = sorted.find(l => l.date !== todayISO()) || sorted[0];
+  const last = sorted[0];
   if (!last) return /*#__PURE__*/React.createElement("p", { className: "text-sm mb-6", style: { color: C.textDim } }, "Sin sesiones aún");
   const parts = last.date.split("-");
   const dow = ["Dom","Lun","Mar","Mié","Jue","Vie","Sáb"][new Date(last.date + "T12:00:00").getDay()];
