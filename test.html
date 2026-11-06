@@ -4273,6 +4273,7 @@ function ProgressFlow({
   const [routineId, setRoutineId] = useState(null);
   const [exerciseName, setExerciseName] = useState(null);
   const [selectedLogId, setSelectedLogId] = useState(null);
+  const [filterRoutine, setFilterRoutine] = useState(null);
   const routine = routines.find(r => r.id === routineId);
 
   function fmtDuration(log) {
@@ -4291,7 +4292,6 @@ function ProgressFlow({
 
   if (view === "sessions") {
     const allRoutineNames = [...new Set((logs || []).map(l => l.routineName).filter(Boolean))].sort();
-    const [filterRoutine, setFilterRoutine] = React.useState(null);
     const sorted = (logs || []).slice()
       .filter(l => !filterRoutine || l.routineName === filterRoutine)
       .sort((a, b) => b.date < a.date ? -1 : 1);
