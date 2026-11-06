@@ -868,7 +868,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.8.16";
+const APP_VERSION = "2.8.17";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -5765,12 +5765,11 @@ function MainApp({
     }
   }
   async function finalizeSessionExtras(id, extras) {
-    setLogs(prev => prev.map(l => l.id === id ? {
-      ...l,
-      ...extras
-    } : l));
+    // Strip undefined values — Firestore rejects them
+    const cleaned = JSON.parse(JSON.stringify(extras));
+    setLogs(prev => prev.map(l => l.id === id ? { ...l, ...cleaned } : l));
     try {
-      await db.collection("sessions").doc(id).update(extras);
+      await db.collection("sessions").doc(id).update(cleaned);
     } catch (e) {
       setError("No se pudieron guardar los detalles de la sesión.");
     }
