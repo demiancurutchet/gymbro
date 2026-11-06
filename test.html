@@ -64,8 +64,97 @@ const firebaseConfig = {
 };
 firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
-const db = firebase.firestore();
-try { db.enablePersistence({ synchronizeTabs: true }).catch(() => {}); } catch(e) {}
+const _realDb = firebase.firestore();
+try { _realDb.enablePersistence({ synchronizeTabs: true }).catch(() => {}); } catch(e) {}
+
+window.GYMBRO_TEST = true;
+
+// In test mode, intercept all writes so they go to memory only.
+// Reads always hit real Firebase so test shows real data.
+const db = (() => {
+  if (!window.GYMBRO_TEST) return _realDb;
+  // In-memory store: { [collection]: { [id]: data } }
+  const _mem = {};
+  function _getCol(col) { return _mem[col] || (_mem[col] = {}); }
+  function _snap(col, docs) {
+    const arr = Object.entries(docs).map(([id, data]) => ({
+      id, data: () => data, exists: true,
+      ref: _mockRef(col, id)
+    }));
+    return { docs: arr, forEach: fn => arr.forEach(fn) };
+  }
+  function _docSnap(id, data) {
+    return { id, exists: !!data, data: () => data || null, ref: _mockRef("?", id) };
+  }
+  function _mockRef(col, id) {
+    return {
+      update: async (fields) => { if (_getCol(col)[id]) Object.assign(_getCol(col)[id], fields); },
+      set: async (data, opts) => {
+        if (opts && opts.merge) { _getCol(col)[id] = Object.assign({}, _getCol(col)[id] || {}, data); }
+        else { _getCol(col)[id] = { ...data }; }
+      },
+      delete: async () => { delete _getCol(col)[id]; }
+    };
+  }
+  let _idSeq = 1;
+  function _mockCollection(col) {
+    return {
+      get: async () => {
+        // Read from real Firebase, then merge with in-memory writes
+        const realSnap = await _realDb.collection(col).get();
+        const merged = {};
+        realSnap.docs.forEach(d => { merged[d.id] = d.data(); });
+        Object.assign(merged, _getCol(col)); // in-memory writes override
+        // Remove deleted (marked as null)
+        Object.keys(merged).forEach(k => { if (merged[k] === null) delete merged[k]; });
+        return _snap(col, merged);
+      },
+      where: (field, op, val) => ({
+        get: async () => {
+          const realSnap = await _realDb.collection(col).where(field, op, val).get();
+          const merged = {};
+          realSnap.docs.forEach(d => { merged[d.id] = d.data(); });
+          Object.assign(merged, _getCol(col));
+          Object.keys(merged).forEach(k => { if (merged[k] === null) delete merged[k]; });
+          // Filter by where clause
+          const filtered = {};
+          Object.entries(merged).forEach(([id, data]) => {
+            if (op === "==" && data && data[field] === val) filtered[id] = data;
+          });
+          return _snap(col, filtered);
+        }
+      }),
+      add: async (data) => {
+        const id = "test_" + (++_idSeq);
+        _getCol(col)[id] = { ...data };
+        return { id };
+      },
+      doc: (id) => ({
+        get: async () => {
+          // Check in-memory first, then real
+          const mem = _getCol(col)[id];
+          if (mem !== undefined) return _docSnap(id, mem);
+          const realDoc = await _realDb.collection(col).doc(id).get();
+          return _docSnap(id, realDoc.exists ? realDoc.data() : null);
+        },
+        set: async (data, opts) => {
+          if (opts && opts.merge) { _getCol(col)[id] = Object.assign({}, _getCol(col)[id] || {}, data); }
+          else { _getCol(col)[id] = { ...data }; }
+        },
+        update: async (fields) => {
+          if (!_getCol(col)[id]) {
+            const realDoc = await _realDb.collection(col).doc(id).get();
+            _getCol(col)[id] = realDoc.exists ? realDoc.data() : {};
+          }
+          Object.assign(_getCol(col)[id], fields);
+        },
+        delete: async () => { _getCol(col)[id] = null; },
+        ref: _mockRef(col, id)
+      })
+    };
+  }
+  return { collection: _mockCollection };
+})();
 
 // ---------------------------------------------------------------------------
 // Design tokens
@@ -3082,14 +3171,7 @@ function SessionScreen({ routine, onCancel, onSave, onFinalize, onDone, lastSess
               return "Listo — Serie " + sNum + " de " + totalSeries + suffix;
             })()
           ),
-          dropEntry && /*#__PURE__*/React.createElement("div", {
-            style: { marginTop: 10, padding: "10px 16px", borderRadius: 12, background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }
-          },
-            /*#__PURE__*/React.createElement("p", { style: { color: C.textDim, fontSize: 11, marginBottom: 4, letterSpacing: 1, textTransform: "uppercase" } }, "Bajadas (drop set)"),
-            /*#__PURE__*/React.createElement("p", { style: { color: C.text, fontSize: 14 } },
-              (dropEntry.drops || []).map((d, i) => (i > 0 ? " → " : "") + d.reps + "×" + (d.weight || "PC") + "kg").join("")
-            )
-          ),
+
           !isLastSerie && !thisHasDrop && /*#__PURE__*/React.createElement("p", {
             className: "text-center mt-3 text-sm",
             style: { color: C.textDim }
@@ -5311,9 +5393,8 @@ function MainApp({
     const earliest = allDates.reduce((min, d) => d < min ? d : min);
     const candidates = [daysAgoISO(1), daysAgoISO(2)];
     const missing = candidates.filter(d => d >= earliest && !nutrition.some(n => n.date === d));
-    if (missing.length > 0) setGapPrompt({
-      missingDays: missing
-    });
+    // nutrition gap prompt disabled (nutrition hidden)
+    // if (missing.length > 0) setGapPrompt({ missingDays: missing });
   }, [nutrition, logs]);
   const [tab, setTab] = useState("inicio");
   const [rutinasView, setRutinasView] = useState(null);
