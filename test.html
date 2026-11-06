@@ -868,7 +868,7 @@ function buildInsights(logs, nutrition, proteinGoal) {
     list
   };
 }
-const APP_VERSION = "2.8.12";
+const APP_VERSION = "2.8.13";
 const DEFAULT_PROTEIN_GOAL = 120;
 const FOODS = [{
   name: "2 huevos",
@@ -1857,9 +1857,10 @@ function renderLastSession(logs, todayISO, C) {
   const mins = last.startedAt && last.endedAt ? Math.round((new Date(last.endedAt) - new Date(last.startedAt)) / 60000) : null;
   const durLabel = mins && mins > 0 ? (mins < 60 ? mins + " min" : Math.floor(mins/60) + "h" + (mins%60 ? " "+mins%60+"min" : "")) : null;
   return /*#__PURE__*/React.createElement(React.Fragment, null,
-    /*#__PURE__*/React.createElement("p", { className: "text-2xl font-bold mb-0.5", style: { color: C.text } }, dateLabel),
-    /*#__PURE__*/React.createElement("p", { className: "text-sm mb-1", style: { color: C.textDim } }, last.routineName || ""),
-    durLabel && /*#__PURE__*/React.createElement("p", { className: "text-xs mb-6", style: { color: C.textDim2 } }, durLabel)
+    /*#__PURE__*/React.createElement("p", { className: "text-3xl font-bold mb-0.5", style: { color: C.text } },
+      dateLabel, durLabel && /*#__PURE__*/React.createElement("span", { style: { color: C.textDim, fontWeight: 500, fontSize: "1.1rem" } }, " · " + durLabel)
+    ),
+    /*#__PURE__*/React.createElement("p", { className: "text-sm mb-6", style: { color: C.textDim } }, last.routineName || "")
   );
 }
 
@@ -1911,12 +1912,12 @@ function HomeScreen({
       left: 24
     }
   }, /*#__PURE__*/React.createElement("h1", {
-    className: "text-2xl font-bold tracking-tight",
+    className: "text-3xl font-bold tracking-tight",
     style: {
       color: "#9F9F9F"
     }
   }, "Hola", userName ? `, ${userName}` : ""), /*#__PURE__*/React.createElement("p", {
-    className: "text-xs font-bold uppercase mt-0.5",
+    className: "text-xs font-semibold uppercase mt-0.5",
     style: {
       color: C.textDim2
     }
@@ -2009,13 +2010,13 @@ function HomeScreen({
     className: "font-bold uppercase leading-tight",
     style: {
       color: C.text,
-      fontSize: 22
+      fontSize: 26
     }
   }, "Días de entreno", /*#__PURE__*/React.createElement("br", null), "este mes"), /*#__PURE__*/React.createElement("p", {
     className: "font-bold tracking-tight",
     style: {
       color: C.text,
-      fontSize: 84,
+      fontSize: 96,
       lineHeight: 1,
       fontVariantNumeric: "tabular-nums"
     }
@@ -2035,11 +2036,12 @@ function HomeScreen({
       marginBottom: 32
     }
   }), /*#__PURE__*/React.createElement("p", {
-    className: "text-sm font-bold uppercase mb-2",
+    className: "text-base font-bold uppercase mb-2",
     style: {
       color: C.text
     }
-  }, "Última sesión"), renderLastSession(logs, todayISO, C)), picking && /*#__PURE__*/React.createElement("div", {
+  }, "Última sesión"), renderLastSession(logs, todayISO, C)),
+ picking && /*#__PURE__*/React.createElement("div", {
     className: "rounded-2xl p-4 mb-6 space-y-2",
     style: {
       background: C.surface,
